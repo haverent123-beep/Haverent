@@ -63,7 +63,7 @@ function auth(req,res,next) {
 app.get("/", (_,res)=>res.json({name:"HavenRent API",status:"online"}));
 app.get("/api/health", (_,res)=>res.json({ok:true}));
 
-app.post("/api/auth/register", async (req,res)=>{
+app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
   try{
     const {name,email,password,role="customer"}=req.body;
     if(!name || !email || !password) return res.status(400).json({message:"Name, email and password are required"});
@@ -74,7 +74,7 @@ app.post("/api/auth/register", async (req,res)=>{
   }catch(e){res.status(500).json({message:e.message});}
 });
 
-app.post("/api/auth/login", async (req,res)=>{
+app.post(["/api/auth/login", "/api/login"], async (req,res)=>{
   try{
     const {email,password}=req.body;
     const user=await User.findOne({email:email?.toLowerCase()});
