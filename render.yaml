@@ -10,3 +10,5 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: PAYMENT_UPI_ID
+        value: 9553473078-4@ybl

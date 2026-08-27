@@ -1,11 +1,13 @@
-# HavenRent backend setup
+HavenRent Backend — Render setup
 
-Render environment variables:
-- MONGO_URI
-- JWT_SECRET
-- RAZORPAY_KEY_ID
-- RAZORPAY_KEY_SECRET
+Environment variables:
+MONGO_URI = your MongoDB Atlas connection string
+JWT_SECRET = a long random secret
+PAYMENT_UPI_ID = 9553473078-4@ybl
 
-For testing, use Razorpay Test Mode keys. For real ₹250 payments, complete Razorpay KYC and switch to Live Mode keys. Never put RAZORPAY_KEY_SECRET in the frontend.
+Deploy with:
+Build: npm install
+Start: npm start
+Health: /api/health
 
-Property upload flow: frontend creates a ₹250 order -> Razorpay Checkout -> backend verifies signature and captured payment -> property POST requires the verified order/payment IDs.
+The property listing fee is ₹250. Owners pay to the configured UPI ID and submit the UPI transaction ID. The backend records the submission and unlocks the property upload. Automatic bank verification is not possible without a supported payment gateway/bank API.
