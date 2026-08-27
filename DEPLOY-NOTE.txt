@@ -1,0 +1,4 @@
+HavenRent frontend signup/login now use /api/auth/register and /api/auth/login.
+The frontend uses the live Render backend hostname https://haverent.onrender.com
+if the primary backend returns 404 or is unreachable.
+IMPORTANT: the Render backend itself must be deployed and running.
