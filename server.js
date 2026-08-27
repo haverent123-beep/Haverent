@@ -13,10 +13,24 @@ const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 
+const allowedOrigins = [
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
+  "https://nethouse.netlify.app",
+];
+
 app.use(cors({
-  origin: true,
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || /^https:\/\/.*\.netlify\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"]
 }));
+app.options(/.*/, cors());
 app.use(express.json({ limit: "2mb" }));
 
 const userSchema = new mongoose.Schema({
@@ -61,9 +75,10 @@ function auth(req,res,next) {
 }
 
 app.get("/", (_,res)=>res.json({name:"HavenRent API",status:"online"}));
-app.get("/api/health", (_,res)=>res.json({ok:true}));
+app.get("/api/health", (_,res)=>res.json({ok:true, service:"HavenRent API", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"}));
 
 app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
+  if (mongoose.connection.readyState !== 1) return res.status(503).json({message:"Database is not connected. Please check MongoDB Atlas settings in Render."});
   try{
     const {name,email,password,role="customer"}=req.body;
     if(!name || !email || !password) return res.status(400).json({message:"Name, email and password are required"});
@@ -75,6 +90,7 @@ app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
 });
 
 app.post(["/api/auth/login", "/api/login"], async (req,res)=>{
+  if (mongoose.connection.readyState !== 1) return res.status(503).json({message:"Database is not connected. Please check MongoDB Atlas settings in Render."});
   try{
     const {email,password}=req.body;
     const user=await User.findOne({email:email?.toLowerCase()});
@@ -170,12 +186,22 @@ app.patch("/api/bookings/:id/status",auth,async(req,res)=>{
 });
 
 async function start(){
-  if(MONGO_URI){
-    await mongoose.connect(MONGO_URI);
-    console.log("MongoDB connected");
-  } else {
-    console.warn("MONGO_URI missing: database routes will not work until MongoDB is configured.");
+  // Start HTTP first so Render can reach the service even while MongoDB is connecting.
+  app.listen(PORT, "0.0.0.0", () => console.log(`HavenRent API running on ${PORT}`));
+
+  if(!MONGO_URI){
+    console.warn("MONGO_URI missing: authentication and database features require MongoDB Atlas.");
+    return;
   }
-  app.listen(PORT,()=>console.log(`HavenRent API running on ${PORT}`));
+
+  try {
+    await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000
+    });
+    console.log("MongoDB connected");
+  } catch (e) {
+    console.error("MongoDB connection failed:", e.message);
+  }
 }
-start().catch(e=>{console.error(e);process.exit(1);});
+start();
