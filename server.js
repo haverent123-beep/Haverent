@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 
 dotenv.config();
 
@@ -12,6 +13,9 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+const PROPERTY_UPLOAD_FEE = 25000; // ₹250 in paise
 
 const allowedOrigins = [
   "https://haverent.netlify.app",
@@ -31,7 +35,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "Accept"]
 }));
 app.options(/.*/, cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "15mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -48,6 +52,10 @@ const propertySchema = new mongoose.Schema({
   type: { type: String, default: "Flat" },
   description: String,
   image: String,
+  images: { type: [String], default: [] },
+  contact: String,
+  latitude: Number,
+  longitude: Number,
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   available: { type: Boolean, default: true }
 }, { timestamps: true });
@@ -62,6 +70,17 @@ const bookingSchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 const Property = mongoose.model("Property", propertySchema);
 const Booking = mongoose.model("Booking", bookingSchema);
+
+const paymentSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  orderId: { type: String, required: true, unique: true },
+  paymentId: String,
+  amount: { type: Number, required: true },
+  currency: { type: String, default: "INR" },
+  status: { type: String, enum: ["created", "verified", "failed"], default: "created" },
+  purpose: { type: String, default: "property_upload" }
+}, { timestamps: true });
+const Payment = mongoose.model("Payment", paymentSchema);
 
 function tokenFor(user) {
   return jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: "7d" });
@@ -130,12 +149,75 @@ app.get("/api/properties/:id",async(req,res)=>{
   }catch(e){res.status(400).json({message:"Invalid property id"});}
 });
 
+async function razorpayRequest(path, options={}) {
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) throw new Error("Razorpay is not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in Render environment variables.");
+  const response = await fetch(`https://api.razorpay.com/v1${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Basic " + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64"),
+      ...(options.headers || {})
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.description || "Razorpay request failed");
+  return data;
+}
+
+app.get("/api/payments/config", auth, async (_req,res) => {
+  res.json({ enabled: Boolean(RAZORPAY_KEY_ID), keyId: RAZORPAY_KEY_ID || null, amount: PROPERTY_UPLOAD_FEE, currency: "INR" });
+});
+
+app.post("/api/payments/create-order", auth, async (req,res) => {
+  try {
+    if (req.user.role !== "owner") return res.status(403).json({message:"Only owners can pay the property upload fee"});
+    const order = await razorpayRequest("/orders", { method:"POST", body:JSON.stringify({
+      amount: PROPERTY_UPLOAD_FEE,
+      currency:"INR",
+      receipt:`property_upload_${req.user.id}_${Date.now()}`,
+      notes:{ user_id:String(req.user.id), purpose:"property_upload" },
+      payment_capture:1
+    })});
+    await Payment.create({user:req.user.id, orderId:order.id, amount:PROPERTY_UPLOAD_FEE, currency:"INR"});
+    res.status(201).json({orderId:order.id, amount:order.amount, currency:order.currency, keyId:RAZORPAY_KEY_ID});
+  } catch(e) { res.status(500).json({message:e.message}); }
+});
+
+function safeEqualHex(a,b){
+  try { const aa=Buffer.from(a,"hex"), bb=Buffer.from(b,"hex"); return aa.length===bb.length && aa.length>0 && crypto.timingSafeEqual(aa,bb); } catch { return false; }
+}
+
+app.post("/api/payments/verify", auth, async (req,res) => {
+  try {
+    if (req.user.role !== "owner") return res.status(403).json({message:"Owner access required"});
+    const {razorpay_order_id, razorpay_payment_id, razorpay_signature} = req.body || {};
+    if(!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) return res.status(400).json({message:"Payment verification details are required"});
+    const paymentRecord = await Payment.findOne({orderId:razorpay_order_id,user:req.user.id});
+    if(!paymentRecord) return res.status(404).json({message:"Payment order not found"});
+    const expected = crypto.createHmac("sha256", RAZORPAY_KEY_SECRET).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
+    if(!safeEqualHex(expected,razorpay_signature)) return res.status(400).json({message:"Invalid payment signature"});
+    const payment = await razorpayRequest(`/payments/${encodeURIComponent(razorpay_payment_id)}`);
+    if(String(payment.order_id)!==String(razorpay_order_id) || Number(payment.amount)!==PROPERTY_UPLOAD_FEE || payment.currency!=="INR") return res.status(400).json({message:"Payment amount or order does not match the ₹250 upload fee"});
+    if(payment.status!=="captured") return res.status(400).json({message:`Payment is ${payment.status}; listing upload is not enabled yet.`});
+    paymentRecord.paymentId=razorpay_payment_id; paymentRecord.status="verified"; await paymentRecord.save();
+    res.json({verified:true, paymentId:razorpay_payment_id, orderId:razorpay_order_id});
+  } catch(e) { res.status(500).json({message:e.message}); }
+});
+
+async function requireVerifiedUploadPayment(userId, orderId, paymentId){
+  if(!orderId || !paymentId) throw new Error("A verified ₹250 payment is required before uploading a property");
+  const record = await Payment.findOne({user:userId,orderId,paymentId,status:"verified",amount:PROPERTY_UPLOAD_FEE});
+  if(!record) throw new Error("Please complete and verify the ₹250 payment first");
+  return record;
+}
+
 app.post("/api/properties",auth,async(req,res)=>{
   try{
     if(req.user.role!=="owner") return res.status(403).json({message:"Only owners can add properties"});
-    const {title,city,location,rent,type,description,image}=req.body;
+    const {title,city,location,rent,type,description,image,images,contact,latitude,longitude,paymentOrderId,paymentId}=req.body;
     if(!title || rent===undefined) return res.status(400).json({message:"Title and rent are required"});
-    const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,owner:req.user.id});
+    await requireVerifiedUploadPayment(req.user.id,paymentOrderId,paymentId);
+    const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id});
     res.status(201).json({property});
   }catch(e){res.status(500).json({message:e.message});}
 });

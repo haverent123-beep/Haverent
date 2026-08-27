@@ -1,10 +1,11 @@
-# HavenRent Backend - Render
+# HavenRent backend setup
 
-Use these Render settings:
-- Root Directory: leave empty when package.json and server.js are at repository root
-- Build Command: npm install
-- Start Command: npm start
+Render environment variables:
+- MONGO_URI
+- JWT_SECRET
+- RAZORPAY_KEY_ID
+- RAZORPAY_KEY_SECRET
 
-Environment variables:
-- MONGO_URI = your MongoDB Atlas connection string
-- JWT_SECRET = a long random secret
+For testing, use Razorpay Test Mode keys. For real ₹250 payments, complete Razorpay KYC and switch to Live Mode keys. Never put RAZORPAY_KEY_SECRET in the frontend.
+
+Property upload flow: frontend creates a ₹250 order -> Razorpay Checkout -> backend verifies signature and captured payment -> property POST requires the verified order/payment IDs.
