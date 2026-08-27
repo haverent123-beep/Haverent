@@ -124,9 +124,16 @@ app.get("/api/auth/me",auth,async(req,res)=>{
 });
 
 const demoProperties = [
-  { _id:"demo-1", title:"Modern Luxury Apartment", city:"Visakhapatnam", location:"Visakhapatnam, Andhra Pradesh", rent:14500, type:"Flat", description:"A modern apartment for comfortable everyday living.", image:"https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80" },
-  { _id:"demo-2", title:"Cozy City Home", city:"Hyderabad", location:"Hyderabad, Telangana", rent:12000, type:"House", description:"A bright and comfortable rental home.", image:"https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80" }
+  { _id:"demo-1", title:"Modern Luxury Apartment", city:"Visakhapatnam", location:"Visakhapatnam, Andhra Pradesh", rent:14500, type:"Flat", latitude:17.6868, longitude:83.2185, description:"A modern apartment for comfortable everyday living.", image:"https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80" },
+  { _id:"demo-2", title:"Cozy City Home", city:"Hyderabad", location:"Hyderabad, Telangana", rent:12000, type:"House", latitude:17.3850, longitude:78.4867, description:"A bright and comfortable rental home.", image:"https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80" }
 ];
+
+function distanceKm(lat1, lon1, lat2, lon2){
+  const toRad=x=>x*Math.PI/180; const R=6371;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
 
 app.get("/api/properties",async(req,res)=>{
   try{
@@ -134,9 +141,19 @@ app.get("/api/properties",async(req,res)=>{
     if(req.query.city) q.city=new RegExp(req.query.city,"i");
     if(req.query.type) q.type=req.query.type;
     if(req.query.maxRent) q.rent={$lte:Number(req.query.maxRent)};
-    if(!MONGO_URI) return res.json({properties:demoProperties});
-    const properties=await Property.find(q).sort({createdAt:-1}).populate("owner","name email");
-    res.json({properties});
+    const lat=Number(req.query.lat), lng=Number(req.query.lng);
+    const hasLocation=Number.isFinite(lat)&&Number.isFinite(lng);
+    const radius=Math.min(Math.max(Number(req.query.radius)||5,0.5),50);
+    if(!MONGO_URI){
+      let properties=demoProperties.map(p=>hasLocation&&Number.isFinite(p.latitude)&&Number.isFinite(p.longitude)?{...p,distanceKm:distanceKm(lat,lng,p.latitude,p.longitude)}:p);
+      if(hasLocation) properties=properties.filter(p=>p.distanceKm===undefined||p.distanceKm<=radius).sort((a,b)=>(a.distanceKm??999999)-(b.distanceKm??999999));
+      return res.json({properties,nearby:hasLocation,radiusKm:hasLocation?radius:null});
+    }
+    let properties=await Property.find(q).sort({createdAt:-1}).populate("owner","name email");
+    if(hasLocation){
+      properties=properties.map(p=>{const o=p.toObject();if(Number.isFinite(o.latitude)&&Number.isFinite(o.longitude))o.distanceKm=distanceKm(lat,lng,o.latitude,o.longitude);return o;}).filter(p=>p.distanceKm!==undefined&&p.distanceKm<=radius).sort((a,b)=>a.distanceKm-b.distanceKm);
+    }
+    res.json({properties,nearby:hasLocation,radiusKm:hasLocation?radius:null});
   }catch(e){res.status(500).json({message:e.message});}
 });
 
@@ -148,7 +165,7 @@ app.get("/api/properties/:id",async(req,res)=>{
   }catch(e){res.status(400).json({message:"Invalid property id"});}
 });
 
-app.get("/api/payments/config", auth, async (_req,res) => {
+app.get("/api/payments/config", async (_req,res) => {
   res.json({ enabled: true, method: "UPI", upiId: PAYMENT_UPI_ID, amount: PROPERTY_UPLOAD_FEE, currency: "INR" });
 });
 

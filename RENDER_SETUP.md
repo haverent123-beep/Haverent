@@ -1,13 +1,11 @@
-HavenRent Backend — Render setup
+# HavenRent Backend — Render setup
 
-Environment variables:
-MONGO_URI = your MongoDB Atlas connection string
-JWT_SECRET = a long random secret
-PAYMENT_UPI_ID = 9553473078-4@ybl
+Build command: `npm install`
+Start command: `npm start`
 
-Deploy with:
-Build: npm install
-Start: npm start
-Health: /api/health
+Required environment variables:
+- `MONGO_URI` = your MongoDB Atlas connection string
+- `JWT_SECRET` = a long random secret
+- `PAYMENT_UPI_ID` = `9553473078-4@ybl`
 
-The property listing fee is ₹250. Owners pay to the configured UPI ID and submit the UPI transaction ID. The backend records the submission and unlocks the property upload. Automatic bank verification is not possible without a supported payment gateway/bank API.
+The payment configuration endpoint is public so the frontend can load the UPI ID/fee before authentication. Payment submission and property creation remain authenticated.
