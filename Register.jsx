@@ -1,4 +1,49 @@
-import {useState} from "react";import {Link,useNavigate} from "react-router-dom";import {api} from "../lib/api";
-export default function Register(){const [form,setForm]=useState({name:"",email:"",password:"",role:"customer"});const [error,setError]=useState("");const nav=useNavigate();const set=(k,v)=>setForm({...form,[k]:v});
-async function submit(e){e.preventDefault();setError("");try{const d=await api("/api/auth/register",{method:"POST",body:JSON.stringify(form)});localStorage.setItem("haverent_token",d.token);localStorage.setItem("haverent_user",JSON.stringify(d.user));nav(d.user.role==="owner"?"/owner/dashboard":"/customer/dashboard");}catch(e){setError(e.message)}}
-return <main className="auth-page"><div className="auth-card"><div className="auth-logo"><span>H</span>HavenRent</div><h1>Create account</h1><p>Join HavenRent today.</p><form onSubmit={submit}><label>Full name</label><input required value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Your name"/><label>Email</label><input required value={form.email} onChange={e=>set("email",e.target.value)} type="email" placeholder="you@example.com"/><label>Password</label><input required minLength="6" value={form.password} onChange={e=>set("password",e.target.value)} type="password" placeholder="Create password"/><label>Account type</label><select value={form.role} onChange={e=>set("role",e.target.value)}><option value="customer">Looking for a home</option><option value="owner">Property owner</option></select>{error&&<p>{error}</p>}<button className="primary-full">Create account</button></form><div className="auth-bottom">Already have an account? <Link to="/login">Login</Link></div></div></main>}
+import {useState} from "react";
+import {Link,useNavigate} from "react-router-dom";
+import {authRequest,dashboardPath,saveAuth} from "../auth";
+
+export default function Register(){
+  const navigate=useNavigate();
+  const [name,setName]=useState("");
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [role,setRole]=useState("customer");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+
+  async function submit(e){
+    e.preventDefault();
+    setError("");
+    if(!name.trim() || !email.trim() || password.length<6){
+      setError("Please enter your name, a valid email and a password of at least 6 characters.");
+      return;
+    }
+    setLoading(true);
+    try{
+      const data=await authRequest("/api/auth/register",{
+        name:name.trim(),
+        email:email.trim(),
+        password,
+        role
+      });
+      const saved=saveAuth(data,{name:name.trim(),email:email.trim(),role});
+      // Always move to the dashboard after a successful account creation.
+      navigate(dashboardPath(saved.user || {role:"customer"}),{replace:true});
+    }catch(err){
+      setError(err.message || "Unable to create account. Please try again.");
+    }finally{setLoading(false);}
+  }
+
+  return <main className="auth-page"><div className="auth-card">
+    <div className="auth-logo"><span>H</span>HavenRent</div>
+    <h1>Create account</h1><p>Join HavenRent today.</p>
+    <form onSubmit={submit}>
+      <label>Full name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" autoComplete="name" required/>
+      <label>Email</label><input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" required/>
+      <label>Account type</label><select value={role} onChange={e=>setRole(e.target.value)}><option value="customer">Customer</option><option value="owner">Owner — List properties</option></select>\n      <label>Password</label><input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="Create password" autoComplete="new-password" required/>
+      {error && <p style={{color:"#c0392b",margin:"8px 0"}}>{error}</p>}
+      <button className="primary-full" disabled={loading}>{loading?"Creating account…":"Create account"}</button>
+    </form>
+    <div className="auth-bottom">Already have an account? <Link to="/login">Login</Link></div>
+  </div></main>
+}
