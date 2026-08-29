@@ -14,6 +14,8 @@ const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 const PROPERTY_UPLOAD_FEE = 250;
 const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 const allowedOrigins = [
   "https://haverent.netlify.app",
@@ -92,6 +94,18 @@ function auth(req,res,next) {
   catch { return res.status(401).json({message:"Invalid or expired token"}); }
 }
 
+app.post("/api/admin/login", (req,res)=>{
+  const email=String(req.body?.email||"").toLowerCase().trim();
+  const password=String(req.body?.password||"");
+  if(!ADMIN_EMAIL || !ADMIN_PASSWORD) return res.status(503).json({message:"Admin credentials are not configured on the backend"});
+  if(email!==ADMIN_EMAIL || password!==ADMIN_PASSWORD) return res.status(401).json({message:"Invalid admin credentials"});
+  const token=jwt.sign({id:"admin",role:"admin",email:ADMIN_EMAIL},JWT_SECRET,{expiresIn:"12h"});
+  res.json({token,user:{id:"admin",email:ADMIN_EMAIL,role:"admin",name:"HavenRent Admin"}});
+});
+function adminAuth(req,res,next){
+  auth(req,res,()=>{ if(req.user?.role!=="admin") return res.status(403).json({message:"Admin access required"}); next(); });
+}
+
 app.get("/", (_,res)=>res.json({name:"HavenRent API",status:"online"}));
 app.get("/api/health", (_,res)=>res.json({ok:true, service:"HavenRent API", database: mongoose.connection.readyState === 1 ? "connected" : "disconnected"}));
 
@@ -152,6 +166,13 @@ app.get("/api/payments/config", async (_req,res) => {
   res.json({ enabled: true, method: "UPI", upiId: PAYMENT_UPI_ID, amount: PROPERTY_UPLOAD_FEE, currency: "INR" });
 });
 
+app.get("/api/payments/my",auth,async(req,res)=>{
+  try{
+    const payments=await Payment.find({user:req.user.id,purpose:"property_upload"}).sort({createdAt:-1}).limit(20);
+    res.json({payments});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
 app.post("/api/payments/manual/submit", auth, async (req,res) => {
   try {
     if (req.user.role !== "owner") return res.status(403).json({message:"Only owners can submit the property upload payment"});
@@ -190,11 +211,27 @@ async function requireSubmittedUploadPayment(userId, transactionId){
     user:userId,
     transactionId:String(transactionId).trim(),
     amount:PROPERTY_UPLOAD_FEE,
-    status:"submitted"
+    status:"verified"
   });
   if(!record) throw new Error("Please pay ₹250 by UPI and submit the transaction ID first");
   return record;
 }
+
+app.get("/api/admin/payments",adminAuth,async(req,res)=>{
+  try{
+    const payments=await Payment.find({status:"submitted"}).sort({createdAt:-1}).populate("user","name email");
+    res.json({payments});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+app.patch("/api/admin/payments/:id",adminAuth,async(req,res)=>{
+  try{
+    const status=String(req.body?.status||"");
+    if(!["verified","rejected"].includes(status)) return res.status(400).json({message:"Status must be verified or rejected"});
+    const payment=await Payment.findByIdAndUpdate(req.params.id,{status},{new:true}).populate("user","name email");
+    if(!payment) return res.status(404).json({message:"Payment not found"});
+    res.json({payment});
+  }catch(e){res.status(500).json({message:e.message});}
+});
 
 app.post("/api/properties",auth,async(req,res)=>{
   try{
