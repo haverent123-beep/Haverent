@@ -213,7 +213,7 @@ async function requireSubmittedUploadPayment(userId, transactionId){
     amount:PROPERTY_UPLOAD_FEE,
     status:"verified"
   });
-  if(!record) throw new Error("Please pay ₹250 by UPI and submit the transaction ID first");
+  if(!record) throw new Error("Payment is pending admin verification. You cannot upload the property yet.");
   return record;
 }
 
@@ -241,7 +241,10 @@ app.post("/api/properties",auth,async(req,res)=>{
     await requireSubmittedUploadPayment(req.user.id,transactionId);
     const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id});
     res.status(201).json({property});
-  }catch(e){res.status(500).json({message:e.message});}
+  }catch(e){
+    const msg=String(e?.message||"Could not create property");
+    res.status(msg.includes("pending admin verification")||msg.includes("₹250")?403:500).json({message:msg});
+  }
 });
 
 app.put("/api/properties/:id",auth,async(req,res)=>{
