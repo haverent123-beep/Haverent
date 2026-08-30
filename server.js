@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ["customer","owner"], default: "customer" }
+  role: { type: String, enum: ["customer","owner","provider"], default: "customer" }
 }, { timestamps: true });
 
 const propertySchema = new mongoose.Schema({
@@ -91,7 +91,10 @@ const serviceRequestSchema = new mongoose.Schema({
   address: String,
   notes: String,
   partnerName: String,
-  partnerPhone: String
+  partnerPhone: String,
+  assignedProvider: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  quotedPrice: { type: Number, default: null },
+  providerNote: String
 }, { timestamps: true });
 const ServiceRequest = mongoose.model("ServiceRequest", serviceRequestSchema);
 
@@ -128,7 +131,8 @@ app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
     if(!name || !email || !password) return res.status(400).json({message:"Name, email and password are required"});
     if(await User.findOne({email:email.toLowerCase()})) return res.status(409).json({message:"Email already registered"});
     const hash=await bcrypt.hash(password,12);
-    const user=await User.create({name,email:email.toLowerCase(),password:hash,role:role==="owner"?"owner":"customer"});
+    const safeRole = ["customer","owner","provider"].includes(String(role).toLowerCase()) ? String(role).toLowerCase() : "customer";
+    const user=await User.create({name,email:email.toLowerCase(),password:hash,role:safeRole});
     res.status(201).json({token:tokenFor(user),user:{id:user._id,name:user.name,email:user.email,role:user.role}});
   }catch(e){res.status(500).json({message:e.message});}
 });
@@ -272,6 +276,58 @@ app.patch("/api/services/requests/:id/cancel",auth,async(req,res)=>{
   }catch(e){res.status(500).json({message:e.message});}
 });
 
+
+// Provider marketplace: service professionals can register, view open jobs and manage jobs they accept.
+const PROVIDER_SERVICES = ["Home Repairs","Move & Shift","Home Cleaning","Rental Agreement","Tenant Verification"];
+
+app.get("/api/providers/me",auth,async(req,res)=>{
+  if(req.user.role!=="provider") return res.status(403).json({message:"Provider account required"});
+  const user=await User.findById(req.user.id).select("-password");
+  if(!user) return res.status(404).json({message:"Provider not found"});
+  const jobs=await ServiceRequest.find({assignedProvider:req.user.id}).sort({createdAt:-1}).limit(50).populate("user","name email");
+  res.json({provider:user,jobs});
+});
+
+app.get("/api/providers/requests",auth,async(req,res)=>{
+  if(req.user.role!=="provider") return res.status(403).json({message:"Provider account required"});
+  const requests=await ServiceRequest.find({
+    $or:[
+      {status:"pending",service:{$in:PROVIDER_SERVICES},assignedProvider:null},
+      {assignedProvider:req.user.id}
+    ]
+  }).sort({createdAt:-1}).populate("user","name email");
+  res.json({requests});
+});
+
+app.patch("/api/providers/requests/:id/accept",auth,async(req,res)=>{
+  if(req.user.role!=="provider") return res.status(403).json({message:"Provider account required"});
+  try{
+    const request=await ServiceRequest.findOneAndUpdate(
+      {_id:req.params.id,status:"pending",assignedProvider:null},
+      {assignedProvider:req.user.id,status:"accepted",partnerName:req.body?.partnerName||"",partnerPhone:req.body?.partnerPhone||"",quotedPrice:req.body?.quotedPrice!==undefined&&req.body?.quotedPrice!==""?Number(req.body.quotedPrice):null},
+      {new:true}
+    ).populate("user","name email");
+    if(!request) return res.status(409).json({message:"This request was already accepted or is no longer available"});
+    res.json({request,message:"Job accepted"});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
+app.patch("/api/providers/requests/:id/status",auth,async(req,res)=>{
+  if(req.user.role!=="provider") return res.status(403).json({message:"Provider account required"});
+  const allowed=["accepted","in_progress","completed","cancelled"];
+  const status=String(req.body?.status||"");
+  if(!allowed.includes(status)) return res.status(400).json({message:"Invalid provider status"});
+  try{
+    const request=await ServiceRequest.findOneAndUpdate(
+      {_id:req.params.id,assignedProvider:req.user.id},
+      {status},
+      {new:true}
+    ).populate("user","name email");
+    if(!request) return res.status(404).json({message:"Assigned service request not found"});
+    res.json({request});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
 app.get("/api/admin/services/requests",adminAuth,async(req,res)=>{
   try{
     const requests=await ServiceRequest.find().sort({createdAt:-1}).populate("user","name email");
@@ -284,7 +340,10 @@ app.patch("/api/admin/services/requests/:id",adminAuth,async(req,res)=>{
     const allowed=["pending","accepted","in_progress","completed","cancelled"];
     const status=String(req.body?.status||"");
     if(!allowed.includes(status)) return res.status(400).json({message:"Invalid service status"});
-    const request=await ServiceRequest.findByIdAndUpdate(req.params.id,{status,partnerName:req.body?.partnerName,partnerPhone:req.body?.partnerPhone},{new:true}).populate("user","name email");
+    const update={status,partnerName:req.body?.partnerName,partnerPhone:req.body?.partnerPhone};
+    if(req.body?.assignedProvider) update.assignedProvider=req.body.assignedProvider;
+    if(req.body?.quotedPrice!==undefined) update.quotedPrice=req.body.quotedPrice===""?null:Number(req.body.quotedPrice);
+    const request=await ServiceRequest.findByIdAndUpdate(req.params.id,update,{new:true}).populate("user","name email").populate("assignedProvider","name email");
     if(!request) return res.status(404).json({message:"Service request not found"});
     res.json({request});
   }catch(e){res.status(500).json({message:e.message});}
