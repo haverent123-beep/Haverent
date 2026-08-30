@@ -82,6 +82,18 @@ const paymentSchema = new mongoose.Schema({
 }, { timestamps: true });
 paymentSchema.index({ transactionId: 1 }, { unique: true });
 const Payment = mongoose.model("Payment", paymentSchema);
+const serviceRequestSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  service: { type: String, required: true, trim: true },
+  status: { type: String, enum: ["pending","accepted","in_progress","completed","cancelled"], default: "pending" },
+  preferredDate: String,
+  preferredTime: String,
+  address: String,
+  notes: String,
+  partnerName: String,
+  partnerPhone: String
+}, { timestamps: true });
+const ServiceRequest = mongoose.model("ServiceRequest", serviceRequestSchema);
 
 function tokenFor(user) {
   return jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: "7d" });
@@ -216,6 +228,67 @@ async function requireSubmittedUploadPayment(userId, transactionId){
   if(!record) throw new Error("Payment is pending admin verification. You cannot upload the property yet.");
   return record;
 }
+
+const SERVICE_CATALOG = [
+  {slug:"home-repairs",name:"Home Repairs",startingPrice:199},
+  {slug:"move-shift",name:"Move & Shift",startingPrice:999},
+  {slug:"home-cleaning",name:"Home Cleaning",startingPrice:499},
+  {slug:"rental-agreement",name:"Rental Agreement",startingPrice:299},
+  {slug:"tenant-verification",name:"Tenant Verification",startingPrice:149},
+  {slug:"rent-management",name:"Rent Management",startingPrice:null}
+];
+app.get("/api/services",(_req,res)=>res.json({services:SERVICE_CATALOG}));
+
+app.post("/api/services/requests",auth,async(req,res)=>{
+  try{
+    const service=String(req.body?.service||"").trim();
+    const preferredDate=String(req.body?.preferredDate||"").trim();
+    const preferredTime=String(req.body?.preferredTime||"").trim();
+    const address=String(req.body?.address||"").trim();
+    if(!service) return res.status(400).json({message:"Service is required"});
+    if(!preferredDate || !preferredTime || !address) return res.status(400).json({message:"Address, preferred date and preferred time are required"});
+    const request=await ServiceRequest.create({
+      user:req.user.id, service, preferredDate, preferredTime, address,
+      notes:String(req.body?.notes||"").trim()
+    });
+    res.status(201).json({request,message:"Service request created"});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
+app.get("/api/services/requests/my",auth,async(req,res)=>{
+  try{
+    const requests=await ServiceRequest.find({user:req.user.id}).sort({createdAt:-1});
+    res.json({requests});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
+app.patch("/api/services/requests/:id/cancel",auth,async(req,res)=>{
+  try{
+    const request=await ServiceRequest.findOne({_id:req.params.id,user:req.user.id});
+    if(!request) return res.status(404).json({message:"Service request not found"});
+    if(["completed","cancelled"].includes(request.status)) return res.status(400).json({message:"This request can no longer be cancelled"});
+    request.status="cancelled"; await request.save();
+    res.json({request});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
+app.get("/api/admin/services/requests",adminAuth,async(req,res)=>{
+  try{
+    const requests=await ServiceRequest.find().sort({createdAt:-1}).populate("user","name email");
+    res.json({requests});
+  }catch(e){res.status(500).json({message:e.message});}
+});
+
+app.patch("/api/admin/services/requests/:id",adminAuth,async(req,res)=>{
+  try{
+    const allowed=["pending","accepted","in_progress","completed","cancelled"];
+    const status=String(req.body?.status||"");
+    if(!allowed.includes(status)) return res.status(400).json({message:"Invalid service status"});
+    const request=await ServiceRequest.findByIdAndUpdate(req.params.id,{status,partnerName:req.body?.partnerName,partnerPhone:req.body?.partnerPhone},{new:true}).populate("user","name email");
+    if(!request) return res.status(404).json({message:"Service request not found"});
+    res.json({request});
+  }catch(e){res.status(500).json({message:e.message});}
+});
 
 app.get("/api/admin/payments",adminAuth,async(req,res)=>{
   try{

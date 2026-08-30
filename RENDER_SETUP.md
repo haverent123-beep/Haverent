@@ -25,3 +25,6 @@ Owner-submitted transaction IDs remain pending. They do NOT unlock property uplo
 - Admin opens the frontend `/admin`, logs in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, checks the UPI transaction in the bank/UPI app, and clicks **Verify payment** or **Reject**.
 - Only a payment with status `verified`, matching the owner and ₹250 amount, can create a property. The backend enforces this independently of the frontend.
 - The owner dashboard refreshes payment status every 5 seconds, so upload unlocks after admin verification.
+
+## HavenRent 2.0 service workflow
+Customer creates a service request with address/date/time -> admin reviews `/api/admin/services/requests` -> admin can set status and partnerName/partnerPhone -> customer sees the updated status and partner details in the dashboard.
