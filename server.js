@@ -57,7 +57,32 @@ const propertySchema = new mongoose.Schema({
   latitude: Number,
   longitude: Number,
   owner: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  available: { type: Boolean, default: true }
+  available: { type: Boolean, default: true },
+  // Room/PG-specific listing details
+  roomType: { type: String, default: "" },
+  occupancy: { type: Number, default: null },
+  totalRooms: { type: Number, default: null },
+  availableRooms: { type: Number, default: null },
+  gender: { type: String, default: "" },
+  furnished: { type: String, default: "" },
+  food: { type: String, default: "" },
+  attachedBathroom: { type: Boolean, default: false },
+  securityDeposit: { type: Number, default: null },
+  amenities: { type: [String], default: [] },
+  // Flat-specific listing details
+  bhk: { type: Number, default: null },
+  bathrooms: { type: Number, default: null },
+  balconies: { type: Number, default: null },
+  areaSqft: { type: Number, default: null },
+  floor: { type: Number, default: null },
+  totalFloors: { type: Number, default: null },
+  facing: { type: String, default: "" },
+  propertyAge: { type: String, default: "" },
+  preferredTenants: { type: String, default: "" },
+  maintenance: { type: Number, default: null },
+  parking: { type: String, default: "" },
+  lift: { type: Boolean, default: false },
+  powerBackup: { type: Boolean, default: false }
 }, { timestamps: true });
 
 const bookingSchema = new mongoose.Schema({
@@ -368,10 +393,10 @@ app.patch("/api/admin/payments/:id",adminAuth,async(req,res)=>{
 app.post("/api/properties",auth,async(req,res)=>{
   try{
     if(req.user.role!=="owner") return res.status(403).json({message:"Only owners can add properties"});
-    const {title,city,location,rent,type,description,image,images,contact,latitude,longitude,transactionId}=req.body;
+    const {title,city,location,rent,type,description,image,images,contact,latitude,longitude,transactionId,roomType,occupancy,totalRooms,availableRooms,gender,furnished,food,attachedBathroom,securityDeposit,amenities,bhk,bathrooms,balconies,areaSqft,floor,totalFloors,facing,propertyAge,preferredTenants,maintenance,parking,lift,powerBackup}=req.body;
     if(!title || rent===undefined) return res.status(400).json({message:"Title and rent are required"});
     await requireSubmittedUploadPayment(req.user.id,transactionId);
-    const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id});
+    const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id,roomType:String(roomType||""),occupancy:occupancy===""||occupancy==null?undefined:Number(occupancy),totalRooms:totalRooms===""||totalRooms==null?undefined:Number(totalRooms),availableRooms:availableRooms===""||availableRooms==null?undefined:Number(availableRooms),gender:String(gender||""),furnished:String(furnished||""),food:String(food||""),attachedBathroom:Boolean(attachedBathroom),securityDeposit:securityDeposit===""||securityDeposit==null?undefined:Number(securityDeposit),amenities:Array.isArray(amenities)?amenities.slice(0,30):[],bhk:bhk===""||bhk==null?undefined:Number(bhk),bathrooms:bathrooms===""||bathrooms==null?undefined:Number(bathrooms),balconies:balconies===""||balconies==null?undefined:Number(balconies),areaSqft:areaSqft===""||areaSqft==null?undefined:Number(areaSqft),floor:floor===""||floor==null?undefined:Number(floor),totalFloors:totalFloors===""||totalFloors==null?undefined:Number(totalFloors),facing:String(facing||""),propertyAge:String(propertyAge||""),preferredTenants:String(preferredTenants||""),maintenance:maintenance===""||maintenance==null?undefined:Number(maintenance),parking:String(parking||""),lift:Boolean(lift),powerBackup:Boolean(powerBackup)});
     res.status(201).json({property});
   }catch(e){
     const msg=String(e?.message||"Could not create property");
@@ -386,13 +411,18 @@ app.put("/api/properties/:id",auth,async(req,res)=>{
     if(String(p.owner)!==req.user.id) return res.status(403).json({message:"Not allowed"});
 
     // Owners may edit their listing, but cannot transfer ownership through this endpoint.
-    const allowed=["title","city","location","rent","type","description","image","images","contact","latitude","longitude","available"];
+    const allowed=["title","city","location","rent","type","description","image","images","contact","latitude","longitude","available","roomType","occupancy","totalRooms","availableRooms","gender","furnished","food","attachedBathroom","securityDeposit","amenities","bhk","bathrooms","balconies","areaSqft","floor","totalFloors","facing","propertyAge","preferredTenants","maintenance","parking","lift","powerBackup"];
     for(const key of allowed){
       if(Object.prototype.hasOwnProperty.call(req.body,key)){
         if(key==="rent") {
           const value=Number(req.body[key]);
           if(!Number.isFinite(value)||value<0) return res.status(400).json({message:"Rent must be a valid non-negative number"});
           p.rent=value;
+        } else if(["occupancy","totalRooms","availableRooms","securityDeposit","bhk","bathrooms","balconies","areaSqft","floor","totalFloors","maintenance"].includes(key)) {
+          const value=req.body[key];
+          p[key]=value===""||value===null||value===undefined?undefined:Number(value);
+        } else if(key==="amenities") {
+          p.amenities=Array.isArray(req.body[key])?req.body[key].slice(0,30):p.amenities;
         } else if(key==="images") {
           p.images=Array.isArray(req.body[key])?req.body[key].slice(0,8):p.images;
         } else if(["latitude","longitude"].includes(key)) {
@@ -414,17 +444,33 @@ app.delete("/api/properties/:id",auth,async(req,res)=>{
 
 app.post("/api/bookings",auth,async(req,res)=>{
   try{
+    if(req.user.role!=="customer") return res.status(403).json({message:"Only customer accounts can request a booking"});
     const {property,moveInDate}=req.body;
     const p=await Property.findById(property);
     if(!p) return res.status(404).json({message:"Property not found"});
-    const booking=await Booking.create({property,user:req.user.id,moveInDate});
-    res.status(201).json({booking});
+    if(p.available===false) return res.status(409).json({message:"This property is currently unavailable"});
+    const existing=await Booking.findOne({property,user:req.user.id,status:{$in:["pending","confirmed"]}});
+    if(existing) return res.status(409).json({message:"You already have an active booking request for this property"});
+    const booking=await Booking.create({property,user:req.user.id,moveInDate:String(moveInDate||"")});
+    await booking.populate("property");
+    res.status(201).json({booking,message:"Booking request sent to the owner"});
   }catch(e){res.status(500).json({message:e.message});}
 });
 
 app.get("/api/bookings/my",auth,async(req,res)=>{
   const bookings=await Booking.find({user:req.user.id}).populate("property");
   res.json({bookings});
+});
+
+app.patch("/api/bookings/:id/cancel",auth,async(req,res)=>{
+  try{
+    const booking=await Booking.findOne({_id:req.params.id,user:req.user.id});
+    if(!booking) return res.status(404).json({message:"Booking not found"});
+    if(booking.status!=="pending") return res.status(400).json({message:"Only pending booking requests can be cancelled"});
+    booking.status="cancelled";
+    await booking.save();
+    res.json({booking,message:"Booking request cancelled"});
+  }catch(e){res.status(500).json({message:e.message});}
 });
 
 app.get("/api/bookings/owner",auth,async(req,res)=>{
