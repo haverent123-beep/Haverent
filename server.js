@@ -18,9 +18,9 @@ const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 const allowedOrigins = [
-  "https://haverent.netlify.app",
-  "https://haveerent.netlify.app",
-  "https://nethouse.netlify.app",
+  "https://haverent.in/admin",
+  "https://haveerent.in",
+  "https://nethouse.in",
 ];
 
 app.use(cors({
