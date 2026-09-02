@@ -19,7 +19,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
 const allowedOrigins = [
   "https://haverent.in/admin",
-  "https://haveerent.in",
+  "https://haverent.in",
   "https://nethouse.in",
 ];
 
