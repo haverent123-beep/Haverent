@@ -35,9 +35,9 @@ const EXTRA_ORIGINS = String(process.env.FRONTEND_ORIGINS || "")
   .filter(Boolean);
 
 const allowedOrigins = [
-  "https://haverent.netlify.app",
-  "https://haveerent.netlify.app",
-  "https://nethouse.netlify.app"
+  "https://www.haverent.in",
+  "https://haverent.in",
+  "haverent.in"
 ];
 
 app.use(
