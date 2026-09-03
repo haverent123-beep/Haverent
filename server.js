@@ -17,27 +17,78 @@ const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 const PROVIDER_REGISTRATION_FEE = Number(
   process.env.PROVIDER_REGISTRATION_FEE || 199
 );
-const BOOKING_FEE = Number(process.env.BOOKING_FEE || 499);
-const PROPERTY_UPLOAD_FEE = 250;
+
+const BOOKING_FEE = Number(
+  process.env.BOOKING_FEE || 199
+);
+
+const PROPERTY_UPLOAD_FEE = Number(
+  process.env.PROPERTY_UPLOAD_FEE || 250
+);
 
 const PAYMENT_UPI_ID =
   process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
 
-const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "")
-  .toLowerCase()
-  .trim();
+const ADMIN_EMAIL =
+  String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const ADMIN_PASSWORD =
+  process.env.ADMIN_PASSWORD || "";
 
-const EXTRA_ORIGINS = String(process.env.FRONTEND_ORIGINS || "")
+const EXTRA_ORIGINS = String(
+  process.env.FRONTEND_ORIGINS || ""
+)
   .split(",")
-  .map(x => x.trim())
+  .map((x) => x.trim())
   .filter(Boolean);
 
+
+/* =========================================================
+   SERVICE CATALOG
+========================================================= */
+
+const SERVICE_CATALOG = [
+  {
+    id: "home-repairs",
+    name: "Home Repairs",
+    description: "Plumbing, electrical and general home repairs",
+    price: 0
+  },
+  {
+    id: "move-shift",
+    name: "Move & Shift",
+    description: "House shifting and moving assistance",
+    price: 0
+  },
+  {
+    id: "home-cleaning",
+    name: "Home Cleaning",
+    description: "Professional home cleaning services",
+    price: 0
+  },
+  {
+    id: "rental-agreement",
+    name: "Rental Agreement",
+    description: "Rental agreement assistance",
+    price: 0
+  },
+  {
+    id: "tenant-verification",
+    name: "Tenant Verification",
+    description: "Tenant verification assistance",
+    price: 0
+  }
+];
+
+
+/* =========================================================
+   CORS
+========================================================= */
+
 const allowedOrigins = [
-  "https://www.haverent.in",
-  "https://haverent.in",
-  "haverent.in"
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
+  "https://nethouse.netlify.app"
 ];
 
 app.use(
@@ -55,9 +106,23 @@ app.use(
 
       return callback(null, false);
     },
+
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"]
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS"
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Accept"
+    ]
   })
 );
 
@@ -72,9 +137,10 @@ app.use(
   })
 );
 
-/* =========================
+
+/* =========================================================
    USER
-========================= */
+========================================================= */
 
 const userSchema = new mongoose.Schema(
   {
@@ -99,7 +165,11 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["customer", "owner", "provider"],
+      enum: [
+        "customer",
+        "owner",
+        "provider"
+      ],
       default: "customer"
     },
 
@@ -135,9 +205,12 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-/* =========================
+const User = mongoose.model("User", userSchema);
+
+
+/* =========================================================
    PROPERTY
-========================= */
+========================================================= */
 
 const propertySchema = new mongoose.Schema(
   {
@@ -147,6 +220,7 @@ const propertySchema = new mongoose.Schema(
     },
 
     city: String,
+
     location: String,
 
     rent: {
@@ -160,6 +234,7 @@ const propertySchema = new mongoose.Schema(
     },
 
     description: String,
+
     image: String,
 
     images: {
@@ -168,7 +243,9 @@ const propertySchema = new mongoose.Schema(
     },
 
     contact: String,
+
     latitude: Number,
+
     longitude: Number,
 
     owner: {
@@ -301,9 +378,15 @@ const propertySchema = new mongoose.Schema(
   }
 );
 
-/* =========================
+const Property = mongoose.model(
+  "Property",
+  propertySchema
+);
+
+
+/* =========================================================
    BOOKING
-========================= */
+========================================================= */
 
 const bookingSchema = new mongoose.Schema(
   {
@@ -321,13 +404,21 @@ const bookingSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "confirmed", "cancelled"],
+      enum: [
+        "pending",
+        "confirmed",
+        "cancelled"
+      ],
       default: "pending"
     },
 
     paymentStatus: {
       type: String,
-      enum: ["submitted", "verified", "rejected"],
+      enum: [
+        "submitted",
+        "verified",
+        "rejected"
+      ],
       default: "submitted"
     },
 
@@ -349,9 +440,15 @@ const bookingSchema = new mongoose.Schema(
   }
 );
 
-/* =========================
+const Booking = mongoose.model(
+  "Booking",
+  bookingSchema
+);
+
+
+/* =========================================================
    PAYMENT
-========================= */
+========================================================= */
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -374,7 +471,8 @@ const paymentSchema = new mongoose.Schema(
 
     amount: {
       type: Number,
-      required: true
+      required: true,
+      default: PROPERTY_UPLOAD_FEE
     },
 
     currency: {
@@ -384,7 +482,11 @@ const paymentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["submitted", "verified", "rejected"],
+      enum: [
+        "submitted",
+        "verified",
+        "rejected"
+      ],
       default: "submitted"
     },
 
@@ -424,9 +526,15 @@ paymentSchema.index(
   { unique: true }
 );
 
-/* =========================
+const Payment = mongoose.model(
+  "Payment",
+  paymentSchema
+);
+
+
+/* =========================================================
    SERVICE REQUEST
-========================= */
+========================================================= */
 
 const serviceRequestSchema = new mongoose.Schema(
   {
@@ -455,11 +563,15 @@ const serviceRequestSchema = new mongoose.Schema(
     },
 
     preferredDate: String,
+
     preferredTime: String,
+
     address: String,
+
     notes: String,
 
     partnerName: String,
+
     partnerPhone: String,
 
     assignedProvider: {
@@ -480,32 +592,15 @@ const serviceRequestSchema = new mongoose.Schema(
   }
 );
 
-const User = mongoose.model("User", userSchema);
-const Property = mongoose.model("Property", propertySchema);
-const Booking = mongoose.model("Booking", bookingSchema);
-const Payment = mongoose.model("Payment", paymentSchema);
 const ServiceRequest = mongoose.model(
   "ServiceRequest",
   serviceRequestSchema
 );
 
-/* =========================
-   SERVICES
-========================= */
 
-const SERVICE_CATALOG = [
-  "Home Repairs",
-  "Move & Shift",
-  "Home Cleaning",
-  "Rental Agreement",
-  "Tenant Verification"
-];
-
-const PROVIDER_SERVICES = SERVICE_CATALOG;
-
-/* =========================
+/* =========================================================
    AUTH
-========================= */
+========================================================= */
 
 function tokenFor(user) {
   return jwt.sign(
@@ -521,11 +616,13 @@ function tokenFor(user) {
 }
 
 function auth(req, res, next) {
-  const header = req.headers.authorization || "";
+  const h =
+    req.headers.authorization || "";
 
-  const token = header.startsWith("Bearer ")
-    ? header.slice(7)
-    : null;
+  const token =
+    h.startsWith("Bearer ")
+      ? h.slice(7)
+      : null;
 
   if (!token) {
     return res.status(401).json({
@@ -534,7 +631,11 @@ function auth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    req.user = jwt.verify(
+      token,
+      JWT_SECRET
+    );
+
     next();
   } catch {
     return res.status(401).json({
@@ -542,6 +643,67 @@ function auth(req, res, next) {
     });
   }
 }
+
+
+/* =========================================================
+   ADMIN AUTH
+========================================================= */
+
+app.post(
+  "/api/admin/login",
+  (req, res) => {
+    const email =
+      String(
+        req.body?.email || ""
+      )
+        .toLowerCase()
+        .trim();
+
+    const password =
+      String(
+        req.body?.password || ""
+      );
+
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      return res.status(503).json({
+        message:
+          "Admin credentials are not configured on the backend"
+      });
+    }
+
+    if (
+      email !== ADMIN_EMAIL ||
+      password !== ADMIN_PASSWORD
+    ) {
+      return res.status(401).json({
+        message:
+          "Invalid admin credentials"
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: "admin",
+        role: "admin",
+        email: ADMIN_EMAIL
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "12h"
+      }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: "admin",
+        email: ADMIN_EMAIL,
+        role: "admin",
+        name: "HavenRent Admin"
+      }
+    });
+  }
+);
 
 function adminAuth(req, res, next) {
   auth(req, res, () => {
@@ -555,58 +717,10 @@ function adminAuth(req, res, next) {
   });
 }
 
-/* =========================
-   ADMIN LOGIN
-========================= */
 
-app.post("/api/admin/login", (req, res) => {
-  const email = String(req.body?.email || "")
-    .toLowerCase()
-    .trim();
-
-  const password = String(req.body?.password || "");
-
-  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    return res.status(503).json({
-      message: "Admin credentials are not configured on the backend"
-    });
-  }
-
-  if (
-    email !== ADMIN_EMAIL ||
-    password !== ADMIN_PASSWORD
-  ) {
-    return res.status(401).json({
-      message: "Invalid admin credentials"
-    });
-  }
-
-  const token = jwt.sign(
-    {
-      id: "admin",
-      role: "admin",
-      email: ADMIN_EMAIL
-    },
-    JWT_SECRET,
-    {
-      expiresIn: "12h"
-    }
-  );
-
-  res.json({
-    token,
-    user: {
-      id: "admin",
-      email: ADMIN_EMAIL,
-      role: "admin",
-      name: "HavenRent Admin"
-    }
-  });
-});
-
-/* =========================
-   HEALTH
-========================= */
+/* =========================================================
+   BASIC
+========================================================= */
 
 app.get("/", (_, res) => {
   res.json({
@@ -615,25 +729,34 @@ app.get("/", (_, res) => {
   });
 });
 
-app.get("/api/health", (_, res) => {
-  res.json({
-    ok: true,
-    service: "HavenRent API",
-    database:
-      mongoose.connection.readyState === 1
-        ? "connected"
-        : "disconnected"
-  });
-});
+app.get(
+  "/api/health",
+  (_, res) => {
+    res.json({
+      ok: true,
+      service: "HavenRent API",
+      database:
+        mongoose.connection.readyState === 1
+          ? "connected"
+          : "disconnected"
+    });
+  }
+);
 
-/* =========================
+
+/* =========================================================
    REGISTER
-========================= */
+========================================================= */
 
 app.post(
-  ["/api/auth/register", "/api/register"],
+  [
+    "/api/auth/register",
+    "/api/register"
+  ],
   async (req, res) => {
-    if (mongoose.connection.readyState !== 1) {
+    if (
+      mongoose.connection.readyState !== 1
+    ) {
       return res.status(503).json({
         message:
           "Database is not connected. Please check MongoDB Atlas settings in Render."
@@ -648,36 +771,47 @@ app.post(
         role = "customer"
       } = req.body;
 
-      if (!name || !email || !password) {
+      if (
+        !name ||
+        !email ||
+        !password
+      ) {
         return res.status(400).json({
           message:
             "Name, email and password are required"
         });
       }
 
-      const normalizedEmail = String(email)
-        .toLowerCase()
-        .trim();
+      const normalizedEmail =
+        email.toLowerCase().trim();
 
-      const existing = await User.findOne({
-        email: normalizedEmail
-      });
-
-      if (existing) {
+      if (
+        await User.findOne({
+          email: normalizedEmail
+        })
+      ) {
         return res.status(409).json({
-          message: "Email already registered"
+          message:
+            "Email already registered"
         });
       }
 
-      const safeRole = [
-        "customer",
-        "owner",
-        "provider"
-      ].includes(String(role).toLowerCase())
-        ? String(role).toLowerCase()
-        : "customer";
+      const hash =
+        await bcrypt.hash(
+          password,
+          12
+        );
 
-      const hash = await bcrypt.hash(password, 12);
+      const safeRole =
+        [
+          "customer",
+          "owner",
+          "provider"
+        ].includes(
+          String(role).toLowerCase()
+        )
+          ? String(role).toLowerCase()
+          : "customer";
 
       const verificationStatus =
         safeRole === "provider"
@@ -692,24 +826,34 @@ app.post(
               .toUpperCase()}`
           : undefined;
 
-      const user = await User.create({
-        name,
-        email: normalizedEmail,
-        password: hash,
-        role: safeRole,
-        verificationStatus,
-        phone: String(
-          req.body?.phone || ""
-        ).trim(),
-        providerServices:
-          Array.isArray(req.body?.providerServices)
-            ? req.body.providerServices.slice(0, 10)
-            : [],
-        ownerToken
-      });
+      const user =
+        await User.create({
+          name,
+          email: normalizedEmail,
+          password: hash,
+          role: safeRole,
+          verificationStatus,
+          phone:
+            String(
+              req.body?.phone || ""
+            ).trim(),
+
+          providerServices:
+            Array.isArray(
+              req.body?.providerServices
+            )
+              ? req.body.providerServices.slice(
+                  0,
+                  10
+                )
+              : [],
+
+          ownerToken
+        });
 
       res.status(201).json({
         token: tokenFor(user),
+
         user: {
           id: user._id,
           name: user.name,
@@ -720,7 +864,8 @@ app.post(
           phone: user.phone,
           providerServices:
             user.providerServices,
-          ownerToken: user.ownerToken
+          ownerToken:
+            user.ownerToken
         }
       });
     } catch (e) {
@@ -731,14 +876,20 @@ app.post(
   }
 );
 
-/* =========================
+
+/* =========================================================
    LOGIN
-========================= */
+========================================================= */
 
 app.post(
-  ["/api/auth/login", "/api/login"],
+  [
+    "/api/auth/login",
+    "/api/login"
+  ],
   async (req, res) => {
-    if (mongoose.connection.readyState !== 1) {
+    if (
+      mongoose.connection.readyState !== 1
+    ) {
       return res.status(503).json({
         message:
           "Database is not connected. Please check MongoDB Atlas settings in Render."
@@ -746,32 +897,33 @@ app.post(
     }
 
     try {
-      const email = String(
-        req.body?.email || ""
-      ).toLowerCase();
+      const {
+        email,
+        password
+      } = req.body;
 
-      const password = String(
-        req.body?.password || ""
-      );
-
-      const user = await User.findOne({
-        email
-      });
+      const user =
+        await User.findOne({
+          email:
+            email?.toLowerCase()
+        });
 
       if (
         !user ||
         !(await bcrypt.compare(
-          password,
+          password || "",
           user.password
         ))
       ) {
         return res.status(401).json({
-          message: "Invalid email or password"
+          message:
+            "Invalid email or password"
         });
       }
 
       res.json({
         token: tokenFor(user),
+
         user: {
           id: user._id,
           name: user.name,
@@ -782,7 +934,8 @@ app.post(
           phone: user.phone,
           providerServices:
             user.providerServices,
-          ownerToken: user.ownerToken
+          ownerToken:
+            user.ownerToken
         }
       });
     } catch (e) {
@@ -793,35 +946,42 @@ app.post(
   }
 );
 
-/* =========================
+
+/* =========================================================
    CURRENT USER
-========================= */
+========================================================= */
 
-app.get("/api/auth/me", auth, async (req, res) => {
-  try {
-    const user = await User.findById(
-      req.user.id
-    ).select("-password");
+app.get(
+  "/api/auth/me",
+  auth,
+  async (req, res) => {
+    try {
+      const user =
+        await User.findById(
+          req.user.id
+        ).select("-password");
 
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found"
+        });
+      }
+
+      res.json({
+        user
+      });
+    } catch (e) {
+      res.status(500).json({
+        message: e.message
       });
     }
-
-    res.json({
-      user
-    });
-  } catch (e) {
-    res.status(500).json({
-      message: e.message
-    });
   }
-});
+);
 
-/* =========================
+
+/* =========================================================
    DEMO PROPERTIES
-========================= */
+========================================================= */
 
 const demoProperties = [
   {
@@ -837,6 +997,7 @@ const demoProperties = [
     image:
       "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80"
   },
+
   {
     _id: "demo-2",
     title: "Cozy City Home",
@@ -852,104 +1013,143 @@ const demoProperties = [
   }
 ];
 
-/* =========================
+
+/* =========================================================
    PROPERTIES
-========================= */
+========================================================= */
 
-app.get("/api/properties", async (req, res) => {
-  try {
-    const q = {};
+app.get(
+  "/api/properties",
+  async (req, res) => {
+    try {
+      const q = {};
 
-    if (req.query.city) {
-      q.city = new RegExp(
-        String(req.query.city),
-        "i"
-      );
-    }
+      if (req.query.city) {
+        q.city =
+          new RegExp(
+            req.query.city,
+            "i"
+          );
+      }
 
-    if (req.query.type) {
-      q.type = req.query.type;
-    }
+      if (req.query.type) {
+        q.type = req.query.type;
+      }
 
-    if (req.query.maxRent) {
-      q.rent = {
-        $lte: Number(req.query.maxRent)
-      };
-    }
+      if (req.query.maxRent) {
+        q.rent = {
+          $lte:
+            Number(
+              req.query.maxRent
+            )
+        };
+      }
 
-    if (!MONGO_URI) {
-      return res.json({
-        properties: demoProperties
-      });
-    }
-
-    const properties = await Property.find(q)
-      .sort({ createdAt: -1 })
-      .populate("owner", "name email");
-
-    res.json({
-      properties
-    });
-  } catch (e) {
-    res.status(500).json({
-      message: e.message
-    });
-  }
-});
-
-app.get("/api/properties/:id", async (req, res) => {
-  try {
-    const property = await Property.findById(
-      req.params.id
-    ).populate("owner", "name email");
-
-    if (!property) {
-      const demo = demoProperties.find(
-        x =>
-          String(x._id) ===
-          String(req.params.id)
-      );
-
-      if (demo) {
+      if (!MONGO_URI) {
         return res.json({
-          property: demo
+          properties:
+            demoProperties
         });
       }
 
-      return res.status(404).json({
-        message: "Property not found"
+      const properties =
+        await Property.find(q)
+          .sort({
+            createdAt: -1
+          })
+          .populate(
+            "owner",
+            "name email"
+          );
+
+      res.json({
+        properties
+      });
+    } catch (e) {
+      res.status(500).json({
+        message: e.message
       });
     }
+  }
+);
 
+
+app.get(
+  "/api/properties/:id",
+  async (req, res) => {
+    try {
+      const p =
+        await Property.findById(
+          req.params.id
+        ).populate(
+          "owner",
+          "name email"
+        );
+
+      if (!p) {
+        const demo =
+          demoProperties.find(
+            (x) =>
+              String(x._id) ===
+              String(req.params.id)
+          );
+
+        if (demo) {
+          return res.json({
+            property: demo
+          });
+        }
+
+        return res.status(404).json({
+          message:
+            "Property not found"
+        });
+      }
+
+      res.json({
+        property: p
+      });
+    } catch (e) {
+      res.status(400).json({
+        message:
+          "Invalid property id"
+      });
+    }
+  }
+);
+
+
+/* =========================================================
+   PAYMENT CONFIG
+========================================================= */
+
+app.get(
+  "/api/payments/config",
+  async (_req, res) => {
     res.json({
-      property
-    });
-  } catch {
-    res.status(400).json({
-      message: "Invalid property id"
+      enabled: true,
+      method: "UPI",
+      upiId: PAYMENT_UPI_ID,
+      currency: "INR",
+
+      amounts: {
+        property_upload:
+          PROPERTY_UPLOAD_FEE,
+
+        provider_registration:
+          PROVIDER_REGISTRATION_FEE,
+
+        booking:
+          BOOKING_FEE
+      }
     });
   }
-});
+);
 
-/* =========================
-   PAYMENT CONFIG
-========================= */
 
-app.get("/api/payments/config", (_, res) => {
-  res.json({
-    enabled: true,
-    method: "UPI",
-    upiId: PAYMENT_UPI_ID,
-    currency: "INR",
-    amounts: {
-      property_upload:
-        PROPERTY_UPLOAD_FEE,
-      provider_registration:
-        PROVIDER_REGISTRATION_FEE,
-      booking: BOOKING_FEE
-    }
-  });
-});
+/* =========================================================
+   MY PAYMENTS
+========================================================= */
 
 app.get(
   "/api/payments/my",
@@ -961,7 +1161,9 @@ app.get(
           user: req.user.id
         })
           .populate("booking")
-          .sort({ createdAt: -1 })
+          .sort({
+            createdAt: -1
+          })
           .limit(50);
 
       res.json({
@@ -975,22 +1177,26 @@ app.get(
   }
 );
 
-/* =========================
-   PAYMENT SUBMIT
-========================= */
+
+/* =========================================================
+   MANUAL UPI PAYMENT SUBMIT
+========================================================= */
 
 app.post(
   "/api/payments/manual/submit",
   auth,
   async (req, res) => {
     try {
-      const purpose = String(
-        req.body?.purpose || ""
-      ).trim();
+      const purpose =
+        String(
+          req.body?.purpose || ""
+        ).trim();
 
-      const transactionId = String(
-        req.body?.transactionId || ""
-      ).trim();
+      const transactionId =
+        String(
+          req.body?.transactionId ||
+            ""
+        ).trim();
 
       if (
         ![
@@ -1000,7 +1206,8 @@ app.post(
         ].includes(purpose)
       ) {
         return res.status(400).json({
-          message: "Invalid payment purpose"
+          message:
+            "Invalid payment purpose"
         });
       }
 
@@ -1014,12 +1221,12 @@ app.post(
         });
       }
 
-      const duplicate =
+      const already =
         await Payment.findOne({
           transactionId
         });
 
-      if (duplicate) {
+      if (already) {
         return res.status(409).json({
           message:
             "This transaction ID has already been submitted"
@@ -1027,7 +1234,8 @@ app.post(
       }
 
       if (
-        purpose === "property_upload" &&
+        purpose ===
+          "property_upload" &&
         req.user.role !== "owner"
       ) {
         return res.status(403).json({
@@ -1037,7 +1245,8 @@ app.post(
       }
 
       if (
-        purpose === "provider_registration" &&
+        purpose ===
+          "provider_registration" &&
         req.user.role !== "provider"
       ) {
         return res.status(403).json({
@@ -1062,34 +1271,33 @@ app.post(
         booking =
           await Booking.findOne({
             _id: String(
-              req.body?.bookingId || ""
+              req.body?.bookingId ||
+                ""
             ),
             user: req.user.id
           });
 
         if (!booking) {
           return res.status(404).json({
-            message: "Booking not found"
+            message:
+              "Booking not found"
           });
         }
 
-        if (booking.status === "cancelled") {
-          return res.status(400).json({
+        if (
+          booking.paymentStatus ===
+          "verified"
+        ) {
+          return res.status(409).json({
             message:
-              "Cancelled booking cannot receive a payment"
-          });
-        }
-
-        if (booking.paymentStatus === "verified") {
-          return res.status(400).json({
-            message:
-              "This booking payment is already verified"
+              "Booking payment is already verified"
           });
         }
       }
 
       const amount =
-        purpose === "property_upload"
+        purpose ===
+        "property_upload"
           ? PROPERTY_UPLOAD_FEE
           : purpose ===
             "provider_registration"
@@ -1115,9 +1323,10 @@ app.post(
 
           purpose,
 
-          booking: booking
-            ? booking._id
-            : null
+          booking:
+            booking
+              ? booking._id
+              : null
         });
 
       if (booking) {
@@ -1129,9 +1338,10 @@ app.post(
 
         if (!booking.receiptNo) {
           booking.receiptNo =
-            `HR-${new Date().getFullYear()}-${crypto
-              .randomBytes(4)
-              .toString("hex")
+            `HR-${new Date().getFullYear()}-${String(
+              booking._id
+            )
+              .slice(-8)
               .toUpperCase()}`;
         }
 
@@ -1140,9 +1350,8 @@ app.post(
 
       res.status(201).json({
         submitted: true,
-        paymentId: String(
-          payment._id
-        ),
+        paymentId:
+          String(payment._id),
         amount,
         purpose,
         message:
@@ -1156,40 +1365,57 @@ app.post(
   }
 );
 
-/* =========================
-   SERVICES
-========================= */
 
-app.get("/api/services", (_, res) => {
-  res.json({
-    services: SERVICE_CATALOG
-  });
-});
+/* =========================================================
+   SERVICES
+========================================================= */
+
+app.get(
+  "/api/services",
+  (_req, res) => {
+    res.json({
+      services:
+        SERVICE_CATALOG
+    });
+  }
+);
+
+
+/* =========================================================
+   SERVICE REQUEST
+========================================================= */
 
 app.post(
   "/api/services/requests",
   auth,
   async (req, res) => {
     try {
-      const service = String(
-        req.body?.service || ""
-      ).trim();
+      const service =
+        String(
+          req.body?.service || ""
+        ).trim();
 
-      const preferredDate = String(
-        req.body?.preferredDate || ""
-      ).trim();
+      const preferredDate =
+        String(
+          req.body?.preferredDate ||
+            ""
+        ).trim();
 
-      const preferredTime = String(
-        req.body?.preferredTime || ""
-      ).trim();
+      const preferredTime =
+        String(
+          req.body?.preferredTime ||
+            ""
+        ).trim();
 
-      const address = String(
-        req.body?.address || ""
-      ).trim();
+      const address =
+        String(
+          req.body?.address || ""
+        ).trim();
 
       if (!service) {
         return res.status(400).json({
-          message: "Service is required"
+          message:
+            "Service is required"
         });
       }
 
@@ -1211,9 +1437,11 @@ app.post(
           preferredDate,
           preferredTime,
           address,
-          notes: String(
-            req.body?.notes || ""
-          ).trim()
+
+          notes:
+            String(
+              req.body?.notes || ""
+            ).trim()
         });
 
       res.status(201).json({
@@ -1228,6 +1456,7 @@ app.post(
     }
   }
 );
+
 
 app.get(
   "/api/services/requests/my",
@@ -1252,6 +1481,7 @@ app.get(
   }
 );
 
+
 app.patch(
   "/api/services/requests/:id/cancel",
   auth,
@@ -1271,9 +1501,10 @@ app.patch(
       }
 
       if (
-        ["completed", "cancelled"].includes(
-          request.status
-        )
+        [
+          "completed",
+          "cancelled"
+        ].includes(request.status)
       ) {
         return res.status(400).json({
           message:
@@ -1281,7 +1512,8 @@ app.patch(
         });
       }
 
-      request.status = "cancelled";
+      request.status =
+        "cancelled";
 
       await request.save();
 
@@ -1296,203 +1528,182 @@ app.patch(
   }
 );
 
-/* =========================
-   PROVIDER
-========================= */
+
+/* =========================================================
+   PROVIDERS
+========================================================= */
+
+const PROVIDER_SERVICES = [
+  "Home Repairs",
+  "Move & Shift",
+  "Home Cleaning",
+  "Rental Agreement",
+  "Tenant Verification"
+];
+
 
 app.get(
   "/api/providers/me",
   auth,
   async (req, res) => {
-    try {
-      if (req.user.role !== "provider") {
-        return res.status(403).json({
-          message:
-            "Provider account required"
-        });
-      }
-
-      const provider =
-        await User.findById(
-          req.user.id
-        ).select("-password");
-
-      if (!provider) {
-        return res.status(404).json({
-          message: "Provider not found"
-        });
-      }
-
-      if (
-        provider.verificationStatus !==
-        "verified"
-      ) {
-        return res.status(403).json({
-          message:
-            "Provider account is waiting for admin verification"
-        });
-      }
-
-      const registrationPayment =
-        await Payment.findOne({
-          user: req.user.id,
-          purpose:
-            "provider_registration",
-          status: "verified"
-        });
-
-      if (!registrationPayment) {
-        return res.status(403).json({
-          message:
-            "Provider registration payment must be verified by admin"
-        });
-      }
-
-      const jobs =
-        await ServiceRequest.find({
-          assignedProvider:
-            req.user.id
-        })
-          .sort({ createdAt: -1 })
-          .limit(50)
-          .populate(
-            "user",
-            "name email"
-          );
-
-      res.json({
-        provider,
-        jobs
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
+    if (
+      req.user.role !==
+      "provider"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account required"
       });
     }
+
+    const me =
+      await User.findById(
+        req.user.id
+      ).select(
+        "verificationStatus"
+      );
+
+    if (
+      me?.verificationStatus !==
+      "verified"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account is waiting for admin verification"
+      });
+    }
+
+    const user =
+      await User.findById(
+        req.user.id
+      ).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        message:
+          "Provider not found"
+      });
+    }
+
+    const jobs =
+      await ServiceRequest.find({
+        assignedProvider:
+          req.user.id
+      })
+        .sort({
+          createdAt: -1
+        })
+        .limit(50)
+        .populate(
+          "user",
+          "name email"
+        );
+
+    res.json({
+      provider: user,
+      jobs
+    });
   }
 );
+
 
 app.get(
   "/api/providers/requests",
   auth,
   async (req, res) => {
-    try {
-      if (req.user.role !== "provider") {
-        return res.status(403).json({
-          message:
-            "Provider account required"
-        });
-      }
-
-      const me =
-        await User.findById(
-          req.user.id
-        ).select(
-          "verificationStatus"
-        );
-
-      if (
-        me?.verificationStatus !==
-        "verified"
-      ) {
-        return res.status(403).json({
-          message:
-            "Provider account is waiting for admin verification"
-        });
-      }
-
-      const registrationPayment =
-        await Payment.findOne({
-          user: req.user.id,
-          purpose:
-            "provider_registration",
-          status: "verified"
-        });
-
-      if (!registrationPayment) {
-        return res.status(403).json({
-          message:
-            "Provider registration payment must be verified by admin"
-        });
-      }
-
-      const requests =
-        await ServiceRequest.find({
-          $or: [
-            {
-              status: "pending",
-              service: {
-                $in: PROVIDER_SERVICES
-              },
-              assignedProvider: null
-            },
-            {
-              assignedProvider:
-                req.user.id
-            }
-          ]
-        })
-          .sort({ createdAt: -1 })
-          .populate(
-            "user",
-            "name email"
-          );
-
-      res.json({
-        requests
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
+    if (
+      req.user.role !==
+      "provider"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account required"
       });
     }
+
+    const me =
+      await User.findById(
+        req.user.id
+      ).select(
+        "verificationStatus"
+      );
+
+    if (
+      me?.verificationStatus !==
+      "verified"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account is waiting for admin verification"
+      });
+    }
+
+    const requests =
+      await ServiceRequest.find({
+        $or: [
+          {
+            status: "pending",
+            service: {
+              $in:
+                PROVIDER_SERVICES
+            },
+            assignedProvider:
+              null
+          },
+
+          {
+            assignedProvider:
+              req.user.id
+          }
+        ]
+      })
+        .sort({
+          createdAt: -1
+        })
+        .populate(
+          "user",
+          "name email"
+        );
+
+    res.json({
+      requests
+    });
   }
 );
+
 
 app.patch(
   "/api/providers/requests/:id/accept",
   auth,
   async (req, res) => {
+    if (
+      req.user.role !==
+      "provider"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account required"
+      });
+    }
+
+    const me =
+      await User.findById(
+        req.user.id
+      ).select(
+        "verificationStatus"
+      );
+
+    if (
+      me?.verificationStatus !==
+      "verified"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account is waiting for admin verification"
+      });
+    }
+
     try {
-      if (req.user.role !== "provider") {
-        return res.status(403).json({
-          message:
-            "Provider account required"
-        });
-      }
-
-      const provider =
-        await User.findById(
-          req.user.id
-        ).select(
-          "verificationStatus"
-        );
-
-      if (
-        provider?.verificationStatus !==
-        "verified"
-      ) {
-        return res.status(403).json({
-          message:
-            "Provider account is waiting for admin verification"
-        });
-      }
-
-      const payment =
-        await Payment.findOne({
-          user: req.user.id,
-          purpose:
-            "provider_registration",
-          status: "verified"
-        });
-
-      if (!payment) {
-        return res.status(403).json({
-          message:
-            "Provider registration payment must be verified by admin"
-        });
-      }
-
       const request =
         await ServiceRequest.findOneAndUpdate(
           {
@@ -1500,6 +1711,7 @@ app.patch(
             status: "pending",
             assignedProvider: null
           },
+
           {
             assignedProvider:
               req.user.id,
@@ -1507,20 +1719,24 @@ app.patch(
             status: "accepted",
 
             partnerName:
-              req.body?.partnerName || "",
+              req.body?.partnerName ||
+              "",
 
             partnerPhone:
-              req.body?.partnerPhone || "",
+              req.body?.partnerPhone ||
+              "",
 
             quotedPrice:
               req.body?.quotedPrice !==
                 undefined &&
-              req.body?.quotedPrice !== ""
+              req.body?.quotedPrice !==
+                ""
                 ? Number(
                     req.body.quotedPrice
                   )
                 : null
           },
+
           {
             new: true
           }
@@ -1538,7 +1754,8 @@ app.patch(
 
       res.json({
         request,
-        message: "Job accepted"
+        message:
+          "Job accepted"
       });
     } catch (e) {
       res.status(500).json({
@@ -1548,53 +1765,58 @@ app.patch(
   }
 );
 
+
 app.patch(
   "/api/providers/requests/:id/status",
   auth,
   async (req, res) => {
-    try {
-      if (req.user.role !== "provider") {
-        return res.status(403).json({
-          message:
-            "Provider account required"
-        });
-      }
+    if (
+      req.user.role !==
+      "provider"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account required"
+      });
+    }
 
-      const me =
-        await User.findById(
-          req.user.id
-        ).select(
-          "verificationStatus"
-        );
+    const me =
+      await User.findById(
+        req.user.id
+      ).select(
+        "verificationStatus"
+      );
 
-      if (
-        me?.verificationStatus !==
-        "verified"
-      ) {
-        return res.status(403).json({
-          message:
-            "Provider account is waiting for admin verification"
-        });
-      }
+    if (
+      me?.verificationStatus !==
+      "verified"
+    ) {
+      return res.status(403).json({
+        message:
+          "Provider account is waiting for admin verification"
+      });
+    }
 
-      const allowed = [
-        "accepted",
-        "in_progress",
-        "completed",
-        "cancelled"
-      ];
+    const allowed = [
+      "accepted",
+      "in_progress",
+      "completed",
+      "cancelled"
+    ];
 
-      const status = String(
+    const status =
+      String(
         req.body?.status || ""
       );
 
-      if (!allowed.includes(status)) {
-        return res.status(400).json({
-          message:
-            "Invalid provider status"
-        });
-      }
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        message:
+          "Invalid provider status"
+      });
+    }
 
+    try {
       const request =
         await ServiceRequest.findOneAndUpdate(
           {
@@ -1602,9 +1824,11 @@ app.patch(
             assignedProvider:
               req.user.id
           },
+
           {
             status
           },
+
           {
             new: true
           }
@@ -1631,9 +1855,10 @@ app.patch(
   }
 );
 
-/* =========================
+
+/* =========================================================
    ADMIN PROVIDERS
-========================= */
+========================================================= */
 
 app.get(
   "/api/admin/providers",
@@ -1660,15 +1885,21 @@ app.get(
   }
 );
 
+
+/* =========================================================
+   ADMIN PROVIDER VERIFICATION
+========================================================= */
+
 app.patch(
   "/api/admin/providers/:id",
   adminAuth,
   async (req, res) => {
     try {
-      const status = String(
-        req.body?.verificationStatus ||
-          ""
-      );
+      const status =
+        String(
+          req.body?.verificationStatus ||
+            ""
+        );
 
       if (
         ![
@@ -1687,8 +1918,10 @@ app.patch(
         const paid =
           await Payment.findOne({
             user: req.params.id,
+
             purpose:
               "provider_registration",
+
             status: "verified"
           });
 
@@ -1706,9 +1939,12 @@ app.patch(
             _id: req.params.id,
             role: "provider"
           },
+
           {
-            verificationStatus: status
+            verificationStatus:
+              status
           },
+
           {
             new: true
           }
@@ -1716,7 +1952,8 @@ app.patch(
 
       if (!provider) {
         return res.status(404).json({
-          message: "Provider not found"
+          message:
+            "Provider not found"
         });
       }
 
@@ -1733,9 +1970,10 @@ app.patch(
   }
 );
 
-/* =========================
-   ADMIN SERVICES
-========================= */
+
+/* =========================================================
+   ADMIN SERVICE REQUESTS
+========================================================= */
 
 app.get(
   "/api/admin/services/requests",
@@ -1750,10 +1988,6 @@ app.get(
           .populate(
             "user",
             "name email"
-          )
-          .populate(
-            "assignedProvider",
-            "name email"
           );
 
       res.json({
@@ -1766,6 +2000,7 @@ app.get(
     }
   }
 );
+
 
 app.patch(
   "/api/admin/services/requests/:id",
@@ -1780,9 +2015,10 @@ app.patch(
         "cancelled"
       ];
 
-      const status = String(
-        req.body?.status || ""
-      );
+      const status =
+        String(
+          req.body?.status || ""
+        );
 
       if (!allowed.includes(status)) {
         return res.status(400).json({
@@ -1793,13 +2029,17 @@ app.patch(
 
       const update = {
         status,
+
         partnerName:
           req.body?.partnerName,
+
         partnerPhone:
           req.body?.partnerPhone
       };
 
-      if (req.body?.assignedProvider) {
+      if (
+        req.body?.assignedProvider
+      ) {
         update.assignedProvider =
           req.body.assignedProvider;
       }
@@ -1851,9 +2091,10 @@ app.patch(
   }
 );
 
-/* =========================
+
+/* =========================================================
    ADMIN PAYMENTS
-========================= */
+========================================================= */
 
 app.get(
   "/api/admin/payments",
@@ -1869,7 +2110,7 @@ app.get(
           })
           .populate(
             "user",
-            "name email"
+            "name email role"
           )
           .populate(
             "booking",
@@ -1887,19 +2128,26 @@ app.get(
   }
 );
 
+
+/* =========================================================
+   ADMIN VERIFY / REJECT PAYMENT
+========================================================= */
+
 app.patch(
   "/api/admin/payments/:id",
   adminAuth,
   async (req, res) => {
     try {
-      const status = String(
-        req.body?.status || ""
-      );
+      const status =
+        String(
+          req.body?.status || ""
+        );
 
       if (
-        !["verified", "rejected"].includes(
-          status
-        )
+        ![
+          "verified",
+          "rejected"
+        ].includes(status)
       ) {
         return res.status(400).json({
           message:
@@ -1914,11 +2162,13 @@ app.patch(
 
       if (!payment) {
         return res.status(404).json({
-          message: "Payment not found"
+          message:
+            "Payment not found"
         });
       }
 
-      payment.status = status;
+      payment.status =
+        status;
 
       if (status === "verified") {
         payment.receiptNo =
@@ -1930,9 +2180,14 @@ app.patch(
 
       await payment.save();
 
-      /* Booking payment */
+
+      /* -----------------------------------------
+         BOOKING PAYMENT
+      ----------------------------------------- */
+
       if (
-        payment.purpose === "booking" &&
+        payment.purpose ===
+          "booking" &&
         payment.booking
       ) {
         const booking =
@@ -1947,20 +2202,54 @@ app.patch(
           booking.paymentId =
             payment._id;
 
-          booking.receiptNo =
-            booking.receiptNo ||
-            payment.receiptNo;
-
           if (
-            status === "rejected" &&
-            booking.status === "confirmed"
+            status === "verified"
           ) {
-            booking.status = "pending";
+            booking.status =
+              "confirmed";
+
+            booking.receiptNo =
+              payment.receiptNo ||
+              booking.receiptNo;
           }
 
           await booking.save();
         }
       }
+
+
+      /* -----------------------------------------
+         PROVIDER PAYMENT
+      ----------------------------------------- */
+
+      if (
+        payment.purpose ===
+        "provider_registration"
+      ) {
+        const provider =
+          await User.findById(
+            payment.user
+          );
+
+        if (provider) {
+          if (
+            status === "verified"
+          ) {
+            provider.verificationStatus =
+              "pending";
+          }
+
+          if (
+            status === "rejected"
+          ) {
+            provider.verificationStatus =
+              "rejected";
+          }
+
+          await provider.save();
+        }
+      }
+
 
       const populated =
         await Payment.findById(
@@ -1968,9 +2257,11 @@ app.patch(
         )
           .populate(
             "user",
-            "name email"
+            "name email role"
           )
-          .populate("booking");
+          .populate(
+            "booking"
+          );
 
       res.json({
         payment: populated
@@ -1983,9 +2274,10 @@ app.patch(
   }
 );
 
-/* =========================
-   RECEIPT
-========================= */
+
+/* =========================================================
+   CUSTOMER RECEIPT
+========================================================= */
 
 app.get(
   "/api/bookings/:id/receipt",
@@ -2005,7 +2297,8 @@ app.get(
 
       if (!booking) {
         return res.status(404).json({
-          message: "Booking not found"
+          message:
+            "Booking not found"
         });
       }
 
@@ -2021,15 +2314,21 @@ app.get(
 
       const payment =
         await Payment.findOne({
-          booking: booking._id,
-          status: "verified"
+          booking:
+            booking._id,
+
+          status:
+            "verified"
+        }).sort({
+          updatedAt: -1
         });
 
       res.json({
         receipt: {
           receiptNo:
             booking.receiptNo ||
-            payment?.receiptNo,
+            payment?.receiptNo ||
+            "",
 
           bookingId:
             booking._id,
@@ -2052,7 +2351,8 @@ app.get(
             "",
 
           verifiedAt:
-            payment?.updatedAt
+            payment?.updatedAt ||
+            null
         }
       });
     } catch (e) {
@@ -2063,9 +2363,10 @@ app.get(
   }
 );
 
-/* =========================
-   PROPERTY PAYMENT CHECK
-========================= */
+
+/* =========================================================
+   OWNER PAYMENT CHECK
+========================================================= */
 
 async function requireSubmittedUploadPayment(
   userId,
@@ -2074,11 +2375,20 @@ async function requireSubmittedUploadPayment(
   const payment =
     await Payment.findOne({
       user: userId,
+
       transactionId,
-      purpose: "property_upload",
-      amount: PROPERTY_UPLOAD_FEE,
-      status: "verified",
-      usedAt: null
+
+      purpose:
+        "property_upload",
+
+      amount:
+        PROPERTY_UPLOAD_FEE,
+
+      status:
+        "verified",
+
+      usedAt:
+        null
     });
 
   if (!payment) {
@@ -2090,16 +2400,20 @@ async function requireSubmittedUploadPayment(
   return payment;
 }
 
-/* =========================
-   ADD PROPERTY
-========================= */
+
+/* =========================================================
+   CREATE PROPERTY
+========================================================= */
 
 app.post(
   "/api/properties",
   auth,
   async (req, res) => {
     try {
-      if (req.user.role !== "owner") {
+      if (
+        req.user.role !==
+        "owner"
+      ) {
         return res.status(403).json({
           message:
             "Only owners can add properties"
@@ -2119,6 +2433,7 @@ app.post(
         latitude,
         longitude,
         transactionId,
+
         roomType,
         occupancy,
         totalRooms,
@@ -2129,6 +2444,7 @@ app.post(
         attachedBathroom,
         securityDeposit,
         amenities,
+
         bhk,
         bathrooms,
         balconies,
@@ -2144,7 +2460,10 @@ app.post(
         powerBackup
       } = req.body;
 
-      if (!title || rent === undefined) {
+      if (
+        !title ||
+        rent === undefined
+      ) {
         return res.status(400).json({
           message:
             "Title and rent are required"
@@ -2162,7 +2481,10 @@ app.post(
           title,
           city,
           location,
-          rent: Number(rent),
+
+          rent:
+            Number(rent),
+
           type,
           description,
           image,
@@ -2186,10 +2508,13 @@ app.post(
               ? Number(longitude)
               : undefined,
 
-          owner: req.user.id,
+          owner:
+            req.user.id,
 
           roomType:
-            String(roomType || ""),
+            String(
+              roomType || ""
+            ),
 
           occupancy:
             occupancy === "" ||
@@ -2212,16 +2537,24 @@ app.post(
                 ),
 
           gender:
-            String(gender || ""),
+            String(
+              gender || ""
+            ),
 
           furnished:
-            String(furnished || ""),
+            String(
+              furnished || ""
+            ),
 
           food:
-            String(food || ""),
+            String(
+              food || ""
+            ),
 
           attachedBathroom:
-            Boolean(attachedBathroom),
+            Boolean(
+              attachedBathroom
+            ),
 
           securityDeposit:
             securityDeposit === "" ||
@@ -2232,12 +2565,18 @@ app.post(
                 ),
 
           amenities:
-            Array.isArray(amenities)
-              ? amenities.slice(0, 30)
+            Array.isArray(
+              amenities
+            )
+              ? amenities.slice(
+                  0,
+                  30
+                )
               : [],
 
           bhk:
-            bhk === "" || bhk == null
+            bhk === "" ||
+            bhk == null
               ? undefined
               : Number(bhk),
 
@@ -2245,22 +2584,29 @@ app.post(
             bathrooms === "" ||
             bathrooms == null
               ? undefined
-              : Number(bathrooms),
+              : Number(
+                  bathrooms
+                ),
 
           balconies:
             balconies === "" ||
             balconies == null
               ? undefined
-              : Number(balconies),
+              : Number(
+                  balconies
+                ),
 
           areaSqft:
             areaSqft === "" ||
             areaSqft == null
               ? undefined
-              : Number(areaSqft),
+              : Number(
+                  areaSqft
+                ),
 
           floor:
-            floor === "" || floor == null
+            floor === "" ||
+            floor == null
               ? undefined
               : Number(floor),
 
@@ -2268,13 +2614,19 @@ app.post(
             totalFloors === "" ||
             totalFloors == null
               ? undefined
-              : Number(totalFloors),
+              : Number(
+                  totalFloors
+                ),
 
           facing:
-            String(facing || ""),
+            String(
+              facing || ""
+            ),
 
           propertyAge:
-            String(propertyAge || ""),
+            String(
+              propertyAge || ""
+            ),
 
           preferredTenants:
             String(
@@ -2285,18 +2637,24 @@ app.post(
             maintenance === "" ||
             maintenance == null
               ? undefined
-              : Number(maintenance),
+              : Number(
+                  maintenance
+                ),
 
           parking:
-            String(parking || ""),
+            String(
+              parking || ""
+            ),
 
-          lift: Boolean(lift),
+          lift:
+            Boolean(lift),
 
           powerBackup:
             Boolean(powerBackup)
         });
 
-      payment.usedAt = new Date();
+      payment.usedAt =
+        new Date();
 
       await payment.save();
 
@@ -2304,28 +2662,44 @@ app.post(
         property
       });
     } catch (e) {
-      res.status(500).json({
-        message: e.message
-      });
+      const msg =
+        String(
+          e?.message ||
+            "Could not create property"
+        );
+
+      res
+        .status(
+          msg.includes(
+            "pending admin verification"
+          ) ||
+          msg.includes("₹250")
+            ? 403
+            : 500
+        )
+        .json({
+          message: msg
+        });
     }
   }
 );
 
-/* =========================
-   EDIT PROPERTY
-========================= */
+
+/* =========================================================
+   UPDATE PROPERTY
+========================================================= */
 
 app.put(
   "/api/properties/:id",
   auth,
   async (req, res) => {
     try {
-      const property =
+      const p =
         await Property.findById(
           req.params.id
         );
 
-      if (!property) {
+      if (!p) {
         return res.status(404).json({
           message:
             "Property not found"
@@ -2333,11 +2707,12 @@ app.put(
       }
 
       if (
-        String(property.owner) !==
+        String(p.owner) !==
         req.user.id
       ) {
         return res.status(403).json({
-          message: "Not allowed"
+          message:
+            "Not allowed"
         });
       }
 
@@ -2354,6 +2729,7 @@ app.put(
         "latitude",
         "longitude",
         "available",
+
         "roomType",
         "occupancy",
         "totalRooms",
@@ -2364,6 +2740,7 @@ app.put(
         "attachedBathroom",
         "securityDeposit",
         "amenities",
+
         "bhk",
         "bathrooms",
         "balconies",
@@ -2379,7 +2756,9 @@ app.put(
         "powerBackup"
       ];
 
-      for (const key of allowed) {
+      for (
+        const key of allowed
+      ) {
         if (
           Object.prototype.hasOwnProperty.call(
             req.body,
@@ -2388,10 +2767,14 @@ app.put(
         ) {
           if (key === "rent") {
             const value =
-              Number(req.body[key]);
+              Number(
+                req.body[key]
+              );
 
             if (
-              !Number.isFinite(value) ||
+              !Number.isFinite(
+                value
+              ) ||
               value < 0
             ) {
               return res.status(400).json({
@@ -2400,8 +2783,11 @@ app.put(
               });
             }
 
-            property.rent = value;
-          } else if (
+            p.rent =
+              value;
+          }
+
+          else if (
             [
               "occupancy",
               "totalRooms",
@@ -2419,63 +2805,69 @@ app.put(
             const value =
               req.body[key];
 
-            property[key] =
+            p[key] =
               value === "" ||
               value === null ||
               value === undefined
                 ? undefined
                 : Number(value);
-          } else if (
-            key === "amenities"
+          }
+
+          else if (
+            key ===
+            "amenities"
           ) {
-            if (
+            p.amenities =
               Array.isArray(
                 req.body[key]
               )
-            ) {
-              property.amenities =
-                req.body[key].slice(
-                  0,
-                  30
-                );
-            }
-          } else if (
+                ? req.body[key].slice(
+                    0,
+                    30
+                  )
+                : p.amenities;
+          }
+
+          else if (
             key === "images"
           ) {
-            if (
+            p.images =
               Array.isArray(
                 req.body[key]
               )
-            ) {
-              property.images =
-                req.body[key].slice(
-                  0,
-                  8
-                );
-            }
-          } else if (
-            ["latitude", "longitude"].includes(
-              key
-            )
+                ? req.body[key].slice(
+                    0,
+                    8
+                  )
+                : p.images;
+          }
+
+          else if (
+            [
+              "latitude",
+              "longitude"
+            ].includes(key)
           ) {
-            property[key] =
+            p[key] =
               req.body[key] === "" ||
               req.body[key] === null
                 ? undefined
                 : Number(
                     req.body[key]
                   );
-          } else {
-            property[key] =
+          }
+
+          else {
+            p[key] =
               req.body[key];
           }
         }
       }
 
-      await property.save();
+      await p.save();
 
       res.json({
-        property
+        property: p
       });
     } catch (e) {
       res.status(500).json({
@@ -2485,21 +2877,22 @@ app.put(
   }
 );
 
-/* =========================
+
+/* =========================================================
    DELETE PROPERTY
-========================= */
+========================================================= */
 
 app.delete(
   "/api/properties/:id",
   auth,
   async (req, res) => {
     try {
-      const property =
+      const p =
         await Property.findById(
           req.params.id
         );
 
-      if (!property) {
+      if (!p) {
         return res.status(404).json({
           message:
             "Property not found"
@@ -2507,15 +2900,16 @@ app.delete(
       }
 
       if (
-        String(property.owner) !==
+        String(p.owner) !==
         req.user.id
       ) {
         return res.status(403).json({
-          message: "Not allowed"
+          message:
+            "Not allowed"
         });
       }
 
-      await property.deleteOne();
+      await p.deleteOne();
 
       res.json({
         message:
@@ -2529,16 +2923,20 @@ app.delete(
   }
 );
 
-/* =========================
+
+/* =========================================================
    CREATE BOOKING
-========================= */
+========================================================= */
 
 app.post(
   "/api/bookings",
   auth,
   async (req, res) => {
     try {
-      if (req.user.role !== "customer") {
+      if (
+        req.user.role !==
+        "customer"
+      ) {
         return res.status(403).json({
           message:
             "Only customer accounts can request a booking"
@@ -2562,7 +2960,9 @@ app.post(
         });
       }
 
-      if (p.available === false) {
+      if (
+        p.available === false
+      ) {
         return res.status(409).json({
           message:
             "This property is currently unavailable"
@@ -2598,10 +2998,11 @@ app.post(
               moveInDate || ""
             ),
 
+          status:
+            "pending",
+
           paymentStatus:
             "submitted",
-
-          status: "pending",
 
           receiptNo:
             `HR-${new Date().getFullYear()}-${crypto
@@ -2616,10 +3017,15 @@ app.post(
 
       res.status(201).json({
         booking,
-        requiresPayment: true,
-        amount: BOOKING_FEE,
+
+        requiresPayment:
+          true,
+
+        amount:
+          BOOKING_FEE,
+
         message:
-          "Booking created. Complete UPI payment and submit the transaction ID for admin verification."
+          "Booking created. Complete ₹199 UPI payment and submit the transaction ID for admin verification."
       });
     } catch (e) {
       res.status(500).json({
@@ -2629,9 +3035,10 @@ app.post(
   }
 );
 
-/* =========================
-   MY BOOKINGS
-========================= */
+
+/* =========================================================
+   CUSTOMER BOOKINGS
+========================================================= */
 
 app.get(
   "/api/bookings/my",
@@ -2641,9 +3048,13 @@ app.get(
       const bookings =
         await Booking.find({
           user: req.user.id
-        }).populate(
-          "property"
-        );
+        })
+          .populate(
+            "property"
+          )
+          .sort({
+            createdAt: -1
+          });
 
       res.json({
         bookings
@@ -2656,9 +3067,10 @@ app.get(
   }
 );
 
-/* =========================
+
+/* =========================================================
    CANCEL BOOKING
-========================= */
+========================================================= */
 
 app.patch(
   "/api/bookings/:id/cancel",
@@ -2679,7 +3091,8 @@ app.patch(
       }
 
       if (
-        booking.status !== "pending"
+        booking.status !==
+        "pending"
       ) {
         return res.status(400).json({
           message:
@@ -2705,22 +3118,26 @@ app.patch(
   }
 );
 
-/* =========================
+
+/* =========================================================
    OWNER BOOKINGS
-========================= */
+========================================================= */
 
 app.get(
   "/api/bookings/owner",
   auth,
   async (req, res) => {
-    try {
-      if (req.user.role !== "owner") {
-        return res.status(403).json({
-          message:
-            "Owner access required"
-        });
-      }
+    if (
+      req.user.role !==
+      "owner"
+    ) {
+      return res.status(403).json({
+        message:
+          "Owner access required"
+      });
+    }
 
+    try {
       const properties =
         await Property.find({
           owner: req.user.id
@@ -2728,7 +3145,7 @@ app.get(
 
       const ids =
         properties.map(
-          x => x._id
+          (x) => x._id
         );
 
       const bookings =
@@ -2737,7 +3154,9 @@ app.get(
             $in: ids
           }
         })
-          .populate("property")
+          .populate(
+            "property"
+          )
           .populate(
             "user",
             "name email"
@@ -2754,9 +3173,10 @@ app.get(
   }
 );
 
-/* =========================
-   OWNER BOOKING STATUS
-========================= */
+
+/* =========================================================
+   OWNER UPDATE BOOKING STATUS
+========================================================= */
 
 app.patch(
   "/api/bookings/:id/status",
@@ -2783,20 +3203,21 @@ app.patch(
         ) !== req.user.id
       ) {
         return res.status(403).json({
-          message: "Not allowed"
+          message:
+            "Not allowed"
         });
       }
 
-      const status = String(
-        req.body?.status || ""
-      );
+      const allowed = [
+        "pending",
+        "confirmed",
+        "cancelled"
+      ];
 
       if (
-        ![
-          "pending",
-          "confirmed",
-          "cancelled"
-        ].includes(status)
+        !allowed.includes(
+          req.body.status
+        )
       ) {
         return res.status(400).json({
           message:
@@ -2804,34 +3225,8 @@ app.patch(
         });
       }
 
-      /* IMPORTANT:
-         Owner cannot confirm before
-         admin verifies ₹499 payment.
-      */
-
-      if (
-        status === "confirmed" &&
-        booking.paymentStatus !==
-          "verified"
-      ) {
-        return res.status(400).json({
-          message:
-            "Customer booking payment must be verified by admin before confirming the booking"
-        });
-      }
-
-      if (
-        booking.paymentStatus ===
-          "rejected" &&
-        status === "confirmed"
-      ) {
-        return res.status(400).json({
-          message:
-            "This booking payment was rejected"
-        });
-      }
-
-      booking.status = status;
+      booking.status =
+        req.body.status;
 
       await booking.save();
 
@@ -2846,9 +3241,10 @@ app.patch(
   }
 );
 
-/* =========================
+
+/* =========================================================
    START SERVER
-========================= */
+========================================================= */
 
 async function start() {
   app.listen(
@@ -2865,6 +3261,7 @@ async function start() {
     console.warn(
       "MONGO_URI missing: authentication and database features require MongoDB Atlas."
     );
+
     return;
   }
 
@@ -2872,8 +3269,11 @@ async function start() {
     await mongoose.connect(
       MONGO_URI,
       {
-        serverSelectionTimeoutMS: 10000,
-        connectTimeoutMS: 10000
+        serverSelectionTimeoutMS:
+          10000,
+
+        connectTimeoutMS:
+          10000
       }
     );
 
