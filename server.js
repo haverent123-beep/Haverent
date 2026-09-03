@@ -86,9 +86,9 @@ const SERVICE_CATALOG = [
 ========================================================= */
 
 const allowedOrigins = [
-  "https://haverent.netlify.app",
-  "https://haveerent.netlify.app",
-  "https://nethouse.netlify.app"
+  "https://haverent.in",
+  "https://www.haverent.in",
+  "https://haverent.in"
 ];
 
 app.use(
