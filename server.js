@@ -15,16 +15,14 @@ const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 
 const PROVIDER_REGISTRATION_FEE = Number(
-  process.env.PROVIDER_REGISTRATION_FEE || 199
+  process.env.PROVIDER_REGISTRATION_FEE || 250
 );
 
 const BOOKING_FEE = Number(
-  process.env.BOOKING_FEE || 199
+  process.env.BOOKING_FEE || 100
 );
 
-const PROPERTY_UPLOAD_FEE = Number(
-  process.env.PROPERTY_UPLOAD_FEE || 250
-);
+const PROPERTY_UPLOAD_FEE = 250;
 
 const PAYMENT_UPI_ID =
   process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
@@ -39,56 +37,13 @@ const EXTRA_ORIGINS = String(
   process.env.FRONTEND_ORIGINS || ""
 )
   .split(",")
-  .map((x) => x.trim())
+  .map(x => x.trim())
   .filter(Boolean);
 
-
-/* =========================================================
-   SERVICE CATALOG
-========================================================= */
-
-const SERVICE_CATALOG = [
-  {
-    id: "home-repairs",
-    name: "Home Repairs",
-    description: "Plumbing, electrical and general home repairs",
-    price: 0
-  },
-  {
-    id: "move-shift",
-    name: "Move & Shift",
-    description: "House shifting and moving assistance",
-    price: 0
-  },
-  {
-    id: "home-cleaning",
-    name: "Home Cleaning",
-    description: "Professional home cleaning services",
-    price: 0
-  },
-  {
-    id: "rental-agreement",
-    name: "Rental Agreement",
-    description: "Rental agreement assistance",
-    price: 0
-  },
-  {
-    id: "tenant-verification",
-    name: "Tenant Verification",
-    description: "Tenant verification assistance",
-    price: 0
-  }
-];
-
-
-/* =========================================================
-   CORS
-========================================================= */
-
 const allowedOrigins = [
-  "https://haverent.in",
-  "https://www.haverent.in",
-  "https://haverent.in"
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
+  "https://nethouse.netlify.app"
 ];
 
 app.use(
@@ -106,9 +61,7 @@ app.use(
 
       return callback(null, false);
     },
-
     credentials: true,
-
     methods: [
       "GET",
       "POST",
@@ -117,7 +70,6 @@ app.use(
       "DELETE",
       "OPTIONS"
     ],
-
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -138,9 +90,9 @@ app.use(
 );
 
 
-/* =========================================================
+/* =========================
    USER
-========================================================= */
+========================= */
 
 const userSchema = new mongoose.Schema(
   {
@@ -205,12 +157,10 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-const User = mongoose.model("User", userSchema);
 
-
-/* =========================================================
+/* =========================
    PROPERTY
-========================================================= */
+========================= */
 
 const propertySchema = new mongoose.Schema(
   {
@@ -378,15 +328,10 @@ const propertySchema = new mongoose.Schema(
   }
 );
 
-const Property = mongoose.model(
-  "Property",
-  propertySchema
-);
 
-
-/* =========================================================
+/* =========================
    BOOKING
-========================================================= */
+========================= */
 
 const bookingSchema = new mongoose.Schema(
   {
@@ -440,15 +385,10 @@ const bookingSchema = new mongoose.Schema(
   }
 );
 
-const Booking = mongoose.model(
-  "Booking",
-  bookingSchema
-);
 
-
-/* =========================================================
+/* =========================
    PAYMENT
-========================================================= */
+========================= */
 
 const paymentSchema = new mongoose.Schema(
   {
@@ -526,15 +466,10 @@ paymentSchema.index(
   { unique: true }
 );
 
-const Payment = mongoose.model(
-  "Payment",
-  paymentSchema
-);
 
-
-/* =========================================================
+/* =========================
    SERVICE REQUEST
-========================================================= */
+========================= */
 
 const serviceRequestSchema = new mongoose.Schema(
   {
@@ -592,15 +527,112 @@ const serviceRequestSchema = new mongoose.Schema(
   }
 );
 
+
+/* =========================
+   NOTIFICATION
+========================= */
+
+const notificationSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: [
+      "booking",
+      "payment",
+      "provider_registration"
+    ],
+    required: true
+  },
+
+  title: {
+    type: String,
+    required: true
+  },
+
+  message: {
+    type: String,
+    required: true
+  },
+
+  read: {
+    type: Boolean,
+    default: false
+  },
+
+  relatedId: {
+    type: String,
+    default: ""
+  },
+
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const User = mongoose.model("User", userSchema);
+const Property = mongoose.model("Property", propertySchema);
+const Booking = mongoose.model("Booking", bookingSchema);
+const Payment = mongoose.model("Payment", paymentSchema);
 const ServiceRequest = mongoose.model(
   "ServiceRequest",
   serviceRequestSchema
 );
+const Notification = mongoose.model(
+  "Notification",
+  notificationSchema
+);
 
 
-/* =========================================================
+/* =========================
+   SERVICE CATALOG
+========================= */
+
+const SERVICE_CATALOG = [
+  "Home Repairs",
+  "Move & Shift",
+  "Home Cleaning",
+  "Rental Agreement",
+  "Tenant Verification"
+];
+
+const PROVIDER_SERVICES = [
+  "Home Repairs",
+  "Move & Shift",
+  "Home Cleaning",
+  "Rental Agreement",
+  "Tenant Verification"
+];
+
+
+/* =========================
+   ADMIN NOTIFICATION HELPER
+========================= */
+
+async function notifyAdmin(
+  type,
+  title,
+  message,
+  relatedId = ""
+) {
+  try {
+    await Notification.create({
+      type,
+      title,
+      message,
+      relatedId
+    });
+  } catch (e) {
+    console.error(
+      "Admin notification error:",
+      e.message
+    );
+  }
+}
+
+
+/* =========================
    AUTH
-========================================================= */
+========================= */
 
 function tokenFor(user) {
   return jwt.sign(
@@ -645,9 +677,9 @@ function auth(req, res, next) {
 }
 
 
-/* =========================================================
-   ADMIN AUTH
-========================================================= */
+/* =========================
+   ADMIN LOGIN
+========================= */
 
 app.post(
   "/api/admin/login",
@@ -664,7 +696,10 @@ app.post(
         req.body?.password || ""
       );
 
-    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    if (
+      !ADMIN_EMAIL ||
+      !ADMIN_PASSWORD
+    ) {
       return res.status(503).json({
         message:
           "Admin credentials are not configured on the backend"
@@ -718,16 +753,19 @@ function adminAuth(req, res, next) {
 }
 
 
-/* =========================================================
+/* =========================
    BASIC
-========================================================= */
+========================= */
 
-app.get("/", (_, res) => {
-  res.json({
-    name: "HavenRent API",
-    status: "online"
-  });
-});
+app.get(
+  "/",
+  (_, res) => {
+    res.json({
+      name: "HavenRent API",
+      status: "online"
+    });
+  }
+);
 
 app.get(
   "/api/health",
@@ -744,9 +782,9 @@ app.get(
 );
 
 
-/* =========================================================
+/* =========================
    REGISTER
-========================================================= */
+========================= */
 
 app.post(
   [
@@ -782,12 +820,10 @@ app.post(
         });
       }
 
-      const normalizedEmail =
-        email.toLowerCase().trim();
-
       if (
         await User.findOne({
-          email: normalizedEmail
+          email:
+            email.toLowerCase()
         })
       ) {
         return res.status(409).json({
@@ -829,7 +865,8 @@ app.post(
       const user =
         await User.create({
           name,
-          email: normalizedEmail,
+          email:
+            email.toLowerCase(),
           password: hash,
           role: safeRole,
           verificationStatus,
@@ -837,7 +874,6 @@ app.post(
             String(
               req.body?.phone || ""
             ).trim(),
-
           providerServices:
             Array.isArray(
               req.body?.providerServices
@@ -847,9 +883,19 @@ app.post(
                   10
                 )
               : [],
-
           ownerToken
         });
+
+      if (
+        safeRole === "provider"
+      ) {
+        await notifyAdmin(
+          "provider_registration",
+          "New Provider Registration",
+          `${user.name} registered as a service provider.`,
+          String(user._id)
+        );
+      }
 
       res.status(201).json({
         token: tokenFor(user),
@@ -877,9 +923,9 @@ app.post(
 );
 
 
-/* =========================================================
+/* =========================
    LOGIN
-========================================================= */
+========================= */
 
 app.post(
   [
@@ -910,10 +956,12 @@ app.post(
 
       if (
         !user ||
-        !(await bcrypt.compare(
-          password || "",
-          user.password
-        ))
+        !(
+          await bcrypt.compare(
+            password || "",
+            user.password
+          )
+        )
       ) {
         return res.status(401).json({
           message:
@@ -947,41 +995,35 @@ app.post(
 );
 
 
-/* =========================================================
+/* =========================
    CURRENT USER
-========================================================= */
+========================= */
 
 app.get(
   "/api/auth/me",
   auth,
   async (req, res) => {
-    try {
-      const user =
-        await User.findById(
-          req.user.id
-        ).select("-password");
+    const user =
+      await User.findById(
+        req.user.id
+      ).select("-password");
 
-      if (!user) {
-        return res.status(404).json({
-          message: "User not found"
-        });
-      }
-
-      res.json({
-        user
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
       });
     }
+
+    res.json({
+      user
+    });
   }
 );
 
 
-/* =========================================================
+/* =========================
    DEMO PROPERTIES
-========================================================= */
+========================= */
 
 const demoProperties = [
   {
@@ -1014,9 +1056,9 @@ const demoProperties = [
 ];
 
 
-/* =========================================================
+/* =========================
    PROPERTIES
-========================================================= */
+========================= */
 
 app.get(
   "/api/properties",
@@ -1033,7 +1075,8 @@ app.get(
       }
 
       if (req.query.type) {
-        q.type = req.query.type;
+        q.type =
+          req.query.type;
       }
 
       if (req.query.maxRent) {
@@ -1089,9 +1132,11 @@ app.get(
       if (!p) {
         const demo =
           demoProperties.find(
-            (x) =>
+            x =>
               String(x._id) ===
-              String(req.params.id)
+              String(
+                req.params.id
+              )
           );
 
         if (demo) {
@@ -1119,9 +1164,9 @@ app.get(
 );
 
 
-/* =========================================================
+/* =========================
    PAYMENT CONFIG
-========================================================= */
+========================= */
 
 app.get(
   "/api/payments/config",
@@ -1147,9 +1192,9 @@ app.get(
 );
 
 
-/* =========================================================
+/* =========================
    MY PAYMENTS
-========================================================= */
+========================= */
 
 app.get(
   "/api/payments/my",
@@ -1178,9 +1223,9 @@ app.get(
 );
 
 
-/* =========================================================
-   MANUAL UPI PAYMENT SUBMIT
-========================================================= */
+/* =========================
+   MANUAL UPI PAYMENT
+========================= */
 
 app.post(
   "/api/payments/manual/submit",
@@ -1221,12 +1266,11 @@ app.post(
         });
       }
 
-      const already =
+      if (
         await Payment.findOne({
           transactionId
-        });
-
-      if (already) {
+        })
+      ) {
         return res.status(409).json({
           message:
             "This transaction ID has already been submitted"
@@ -1267,13 +1311,16 @@ app.post(
 
       let booking = null;
 
-      if (purpose === "booking") {
+      if (
+        purpose === "booking"
+      ) {
         booking =
           await Booking.findOne({
-            _id: String(
-              req.body?.bookingId ||
-                ""
-            ),
+            _id:
+              String(
+                req.body?.bookingId ||
+                  ""
+              ),
             user: req.user.id
           });
 
@@ -1281,16 +1328,6 @@ app.post(
           return res.status(404).json({
             message:
               "Booking not found"
-          });
-        }
-
-        if (
-          booking.paymentStatus ===
-          "verified"
-        ) {
-          return res.status(409).json({
-            message:
-              "Booking payment is already verified"
           });
         }
       }
@@ -1348,6 +1385,30 @@ app.post(
         await booking.save();
       }
 
+      const paymentLabel =
+        purpose ===
+        "provider_registration"
+          ? "Provider registration"
+          : purpose === "booking"
+          ? "Booking"
+          : "Property upload";
+
+      const payer =
+        await User.findById(
+          req.user.id
+        ).select(
+          "name role"
+        );
+
+      await notifyAdmin(
+        "payment",
+        "New Payment Submitted",
+        `${paymentLabel} payment of ₹${amount} submitted by ${
+          payer?.name || "User"
+        }. UTR: ${transactionId}`,
+        String(payment._id)
+      );
+
       res.status(201).json({
         submitted: true,
         paymentId:
@@ -1366,9 +1427,9 @@ app.post(
 );
 
 
-/* =========================================================
+/* =========================
    SERVICES
-========================================================= */
+========================= */
 
 app.get(
   "/api/services",
@@ -1380,10 +1441,6 @@ app.get(
   }
 );
 
-
-/* =========================================================
-   SERVICE REQUEST
-========================================================= */
 
 app.post(
   "/api/services/requests",
@@ -1437,7 +1494,6 @@ app.post(
           preferredDate,
           preferredTime,
           address,
-
           notes:
             String(
               req.body?.notes || ""
@@ -1529,18 +1585,9 @@ app.patch(
 );
 
 
-/* =========================================================
-   PROVIDERS
-========================================================= */
-
-const PROVIDER_SERVICES = [
-  "Home Repairs",
-  "Move & Shift",
-  "Home Cleaning",
-  "Rental Agreement",
-  "Tenant Verification"
-];
-
+/* =========================
+   PROVIDER
+========================= */
 
 app.get(
   "/api/providers/me",
@@ -1709,7 +1756,8 @@ app.patch(
           {
             _id: req.params.id,
             status: "pending",
-            assignedProvider: null
+            assignedProvider:
+              null
           },
 
           {
@@ -1809,7 +1857,9 @@ app.patch(
         req.body?.status || ""
       );
 
-    if (!allowed.includes(status)) {
+    if (
+      !allowed.includes(status)
+    ) {
       return res.status(400).json({
         message:
           "Invalid provider status"
@@ -1856,9 +1906,106 @@ app.patch(
 );
 
 
-/* =========================================================
+/* =========================
+   ADMIN NOTIFICATIONS
+========================= */
+
+app.get(
+  "/api/admin/notifications",
+  adminAuth,
+  async (req, res) => {
+    try {
+      const notifications =
+        await Notification.find()
+          .sort({
+            createdAt: -1
+          })
+          .limit(100);
+
+      const unread =
+        await Notification.countDocuments({
+          read: false
+        });
+
+      res.json({
+        notifications,
+        unread
+      });
+    } catch (e) {
+      res.status(500).json({
+        message: e.message
+      });
+    }
+  }
+);
+
+
+app.patch(
+  "/api/admin/notifications/:id/read",
+  adminAuth,
+  async (req, res) => {
+    try {
+      const n =
+        await Notification.findByIdAndUpdate(
+          req.params.id,
+          {
+            read: true
+          },
+          {
+            new: true
+          }
+        );
+
+      if (!n) {
+        return res.status(404).json({
+          message:
+            "Notification not found"
+        });
+      }
+
+      res.json({
+        notification: n
+      });
+    } catch (e) {
+      res.status(500).json({
+        message: e.message
+      });
+    }
+  }
+);
+
+
+app.patch(
+  "/api/admin/notifications/read-all",
+  adminAuth,
+  async (req, res) => {
+    try {
+      await Notification.updateMany(
+        {
+          read: false
+        },
+        {
+          $set: {
+            read: true
+          }
+        }
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (e) {
+      res.status(500).json({
+        message: e.message
+      });
+    }
+  }
+);
+
+
+/* =========================
    ADMIN PROVIDERS
-========================================================= */
+========================= */
 
 app.get(
   "/api/admin/providers",
@@ -1886,10 +2033,6 @@ app.get(
 );
 
 
-/* =========================================================
-   ADMIN PROVIDER VERIFICATION
-========================================================= */
-
 app.patch(
   "/api/admin/providers/:id",
   adminAuth,
@@ -1914,7 +2057,9 @@ app.patch(
         });
       }
 
-      if (status === "verified") {
+      if (
+        status === "verified"
+      ) {
         const paid =
           await Payment.findOne({
             user: req.params.id,
@@ -1936,8 +2081,11 @@ app.patch(
       const provider =
         await User.findOneAndUpdate(
           {
-            _id: req.params.id,
-            role: "provider"
+            _id:
+              req.params.id,
+
+            role:
+              "provider"
           },
 
           {
@@ -1971,9 +2119,9 @@ app.patch(
 );
 
 
-/* =========================================================
+/* =========================
    ADMIN SERVICE REQUESTS
-========================================================= */
+========================= */
 
 app.get(
   "/api/admin/services/requests",
@@ -2020,7 +2168,9 @@ app.patch(
           req.body?.status || ""
         );
 
-      if (!allowed.includes(status)) {
+      if (
+        !allowed.includes(status)
+      ) {
         return res.status(400).json({
           message:
             "Invalid service status"
@@ -2049,7 +2199,8 @@ app.patch(
         undefined
       ) {
         update.quotedPrice =
-          req.body.quotedPrice === ""
+          req.body.quotedPrice ===
+          ""
             ? null
             : Number(
                 req.body.quotedPrice
@@ -2092,9 +2243,9 @@ app.patch(
 );
 
 
-/* =========================================================
+/* =========================
    ADMIN PAYMENTS
-========================================================= */
+========================= */
 
 app.get(
   "/api/admin/payments",
@@ -2110,7 +2261,7 @@ app.get(
           })
           .populate(
             "user",
-            "name email role"
+            "name email"
           )
           .populate(
             "booking",
@@ -2128,10 +2279,6 @@ app.get(
   }
 );
 
-
-/* =========================================================
-   ADMIN VERIFY / REJECT PAYMENT
-========================================================= */
 
 app.patch(
   "/api/admin/payments/:id",
@@ -2170,7 +2317,9 @@ app.patch(
       payment.status =
         status;
 
-      if (status === "verified") {
+      if (
+        status === "verified"
+      ) {
         payment.receiptNo =
           `PAY-${new Date().getFullYear()}-${crypto
             .randomBytes(4)
@@ -2179,11 +2328,6 @@ app.patch(
       }
 
       await payment.save();
-
-
-      /* -----------------------------------------
-         BOOKING PAYMENT
-      ----------------------------------------- */
 
       if (
         payment.purpose ===
@@ -2202,54 +2346,13 @@ app.patch(
           booking.paymentId =
             payment._id;
 
-          if (
-            status === "verified"
-          ) {
-            booking.status =
-              "confirmed";
-
-            booking.receiptNo =
-              payment.receiptNo ||
-              booking.receiptNo;
-          }
+          booking.receiptNo =
+            booking.receiptNo ||
+            payment.receiptNo;
 
           await booking.save();
         }
       }
-
-
-      /* -----------------------------------------
-         PROVIDER PAYMENT
-      ----------------------------------------- */
-
-      if (
-        payment.purpose ===
-        "provider_registration"
-      ) {
-        const provider =
-          await User.findById(
-            payment.user
-          );
-
-        if (provider) {
-          if (
-            status === "verified"
-          ) {
-            provider.verificationStatus =
-              "pending";
-          }
-
-          if (
-            status === "rejected"
-          ) {
-            provider.verificationStatus =
-              "rejected";
-          }
-
-          await provider.save();
-        }
-      }
-
 
       const populated =
         await Payment.findById(
@@ -2257,11 +2360,9 @@ app.patch(
         )
           .populate(
             "user",
-            "name email role"
+            "name email"
           )
-          .populate(
-            "booking"
-          );
+          .populate("booking");
 
       res.json({
         payment: populated
@@ -2275,9 +2376,9 @@ app.patch(
 );
 
 
-/* =========================================================
+/* =========================
    CUSTOMER RECEIPT
-========================================================= */
+========================= */
 
 app.get(
   "/api/bookings/:id/receipt",
@@ -2319,16 +2420,13 @@ app.get(
 
           status:
             "verified"
-        }).sort({
-          updatedAt: -1
         });
 
       res.json({
         receipt: {
           receiptNo:
             booking.receiptNo ||
-            payment?.receiptNo ||
-            "",
+            payment?.receiptNo,
 
           bookingId:
             booking._id,
@@ -2351,8 +2449,7 @@ app.get(
             "",
 
           verifiedAt:
-            payment?.updatedAt ||
-            null
+            payment?.updatedAt
         }
       });
     } catch (e) {
@@ -2364,9 +2461,9 @@ app.get(
 );
 
 
-/* =========================================================
-   OWNER PAYMENT CHECK
-========================================================= */
+/* =========================
+   OWNER PROPERTY PAYMENT
+========================= */
 
 async function requireSubmittedUploadPayment(
   userId,
@@ -2387,8 +2484,7 @@ async function requireSubmittedUploadPayment(
       status:
         "verified",
 
-      usedAt:
-        null
+      usedAt: null
     });
 
   if (!payment) {
@@ -2401,9 +2497,9 @@ async function requireSubmittedUploadPayment(
 }
 
 
-/* =========================================================
+/* =========================
    CREATE PROPERTY
-========================================================= */
+========================= */
 
 app.post(
   "/api/properties",
@@ -2650,7 +2746,9 @@ app.post(
             Boolean(lift),
 
           powerBackup:
-            Boolean(powerBackup)
+            Boolean(
+              powerBackup
+            )
         });
 
       payment.usedAt =
@@ -2685,9 +2783,9 @@ app.post(
 );
 
 
-/* =========================================================
+/* =========================
    UPDATE PROPERTY
-========================================================= */
+========================= */
 
 app.put(
   "/api/properties/:id",
@@ -2765,7 +2863,9 @@ app.put(
             key
           )
         ) {
-          if (key === "rent") {
+          if (
+            key === "rent"
+          ) {
             const value =
               Number(
                 req.body[key]
@@ -2785,9 +2885,7 @@ app.put(
 
             p.rent =
               value;
-          }
-
-          else if (
+          } else if (
             [
               "occupancy",
               "totalRooms",
@@ -2811,9 +2909,7 @@ app.put(
               value === undefined
                 ? undefined
                 : Number(value);
-          }
-
-          else if (
+          } else if (
             key ===
             "amenities"
           ) {
@@ -2826,9 +2922,7 @@ app.put(
                     30
                   )
                 : p.amenities;
-          }
-
-          else if (
+          } else if (
             key === "images"
           ) {
             p.images =
@@ -2840,24 +2934,22 @@ app.put(
                     8
                   )
                 : p.images;
-          }
-
-          else if (
+          } else if (
             [
               "latitude",
               "longitude"
             ].includes(key)
           ) {
             p[key] =
-              req.body[key] === "" ||
-              req.body[key] === null
+              req.body[key] ===
+                "" ||
+              req.body[key] ===
+                null
                 ? undefined
                 : Number(
                     req.body[key]
                   );
-          }
-
-          else {
+          } else {
             p[key] =
               req.body[key];
           }
@@ -2878,55 +2970,49 @@ app.put(
 );
 
 
-/* =========================================================
+/* =========================
    DELETE PROPERTY
-========================================================= */
+========================= */
 
 app.delete(
   "/api/properties/:id",
   auth,
   async (req, res) => {
-    try {
-      const p =
-        await Property.findById(
-          req.params.id
-        );
+    const p =
+      await Property.findById(
+        req.params.id
+      );
 
-      if (!p) {
-        return res.status(404).json({
-          message:
-            "Property not found"
-        });
-      }
-
-      if (
-        String(p.owner) !==
-        req.user.id
-      ) {
-        return res.status(403).json({
-          message:
-            "Not allowed"
-        });
-      }
-
-      await p.deleteOne();
-
-      res.json({
+    if (!p) {
+      return res.status(404).json({
         message:
-          "Property deleted"
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
+          "Property not found"
       });
     }
+
+    if (
+      String(p.owner) !==
+      req.user.id
+    ) {
+      return res.status(403).json({
+        message:
+          "Not allowed"
+      });
+    }
+
+    await p.deleteOne();
+
+    res.json({
+      message:
+        "Property deleted"
+    });
   }
 );
 
 
-/* =========================================================
+/* =========================
    CREATE BOOKING
-========================================================= */
+========================= */
 
 app.post(
   "/api/bookings",
@@ -2973,6 +3059,7 @@ app.post(
         await Booking.findOne({
           property,
           user: req.user.id,
+
           status: {
             $in: [
               "pending",
@@ -2998,9 +3085,6 @@ app.post(
               moveInDate || ""
             ),
 
-          status:
-            "pending",
-
           paymentStatus:
             "submitted",
 
@@ -3010,6 +3094,23 @@ app.post(
               .toString("hex")
               .toUpperCase()}`
         });
+
+      const customer =
+        await User.findById(
+          req.user.id
+        ).select("name");
+
+      await notifyAdmin(
+        "booking",
+        "New Booking Request",
+        `${
+          customer?.name ||
+          "Customer"
+        } requested a booking for ${p.title}.`,
+        String(
+          booking._id
+        )
+      );
 
       await booking.populate(
         "property"
@@ -3025,7 +3126,7 @@ app.post(
           BOOKING_FEE,
 
         message:
-          "Booking created. Complete ₹199 UPI payment and submit the transaction ID for admin verification."
+          "Booking created. Complete UPI payment and submit the transaction ID for admin verification."
       });
     } catch (e) {
       res.status(500).json({
@@ -3036,41 +3137,31 @@ app.post(
 );
 
 
-/* =========================================================
-   CUSTOMER BOOKINGS
-========================================================= */
+/* =========================
+   MY BOOKINGS
+========================= */
 
 app.get(
   "/api/bookings/my",
   auth,
   async (req, res) => {
-    try {
-      const bookings =
-        await Booking.find({
-          user: req.user.id
-        })
-          .populate(
-            "property"
-          )
-          .sort({
-            createdAt: -1
-          });
+    const bookings =
+      await Booking.find({
+        user: req.user.id
+      }).populate(
+        "property"
+      );
 
-      res.json({
-        bookings
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
-      });
-    }
+    res.json({
+      bookings
+    });
   }
 );
 
 
-/* =========================================================
+/* =========================
    CANCEL BOOKING
-========================================================= */
+========================= */
 
 app.patch(
   "/api/bookings/:id/cancel",
@@ -3107,6 +3198,7 @@ app.patch(
 
       res.json({
         booking,
+
         message:
           "Booking request cancelled"
       });
@@ -3119,9 +3211,9 @@ app.patch(
 );
 
 
-/* =========================================================
+/* =========================
    OWNER BOOKINGS
-========================================================= */
+========================= */
 
 app.get(
   "/api/bookings/owner",
@@ -3137,124 +3229,94 @@ app.get(
       });
     }
 
-    try {
-      const properties =
-        await Property.find({
-          owner: req.user.id
-        }).select("_id");
+    const properties =
+      await Property.find({
+        owner: req.user.id
+      }).select("_id");
 
-      const ids =
-        properties.map(
-          (x) => x._id
+    const ids =
+      properties.map(
+        x => x._id
+      );
+
+    const bookings =
+      await Booking.find({
+        property: {
+          $in: ids
+        }
+      })
+        .populate(
+          "property"
+        )
+        .populate(
+          "user",
+          "name email"
         );
 
-      const bookings =
-        await Booking.find({
-          property: {
-            $in: ids
-          }
-        })
-          .populate(
-            "property"
-          )
-          .populate(
-            "user",
-            "name email"
-          );
-
-      res.json({
-        bookings
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
-      });
-    }
+    res.json({
+      bookings
+    });
   }
 );
 
 
-/* =========================================================
-   OWNER UPDATE BOOKING STATUS
-========================================================= */
+/* =========================
+   OWNER BOOKING STATUS
+========================= */
 
 app.patch(
   "/api/bookings/:id/status",
   auth,
   async (req, res) => {
-    try {
-      const booking =
-        await Booking.findById(
-          req.params.id
-        ).populate(
-          "property"
-        );
+    const booking =
+      await Booking.findById(
+        req.params.id
+      ).populate(
+        "property"
+      );
 
-      if (!booking) {
-        return res.status(404).json({
-          message:
-            "Booking not found"
-        });
-      }
-
-      if (
-        String(
-          booking.property.owner
-        ) !== req.user.id
-      ) {
-        return res.status(403).json({
-          message:
-            "Not allowed"
-        });
-      }
-
-      const allowed = [
-        "pending",
-        "confirmed",
-        "cancelled"
-      ];
-
-      if (
-        !allowed.includes(
-          req.body.status
-        )
-      ) {
-        return res.status(400).json({
-          message:
-            "Invalid booking status"
-        });
-      }
-
-      booking.status =
-        req.body.status;
-
-      await booking.save();
-
-      res.json({
-        booking
-      });
-    } catch (e) {
-      res.status(500).json({
-        message: e.message
+    if (!booking) {
+      return res.status(404).json({
+        message:
+          "Booking not found"
       });
     }
+
+    if (
+      String(
+        booking.property.owner
+      ) !== req.user.id
+    ) {
+      return res.status(403).json({
+        message:
+          "Not allowed"
+      });
+    }
+
+    booking.status =
+      req.body.status;
+
+    await booking.save();
+
+    res.json({
+      booking
+    });
   }
 );
 
 
-/* =========================================================
+/* =========================
    START SERVER
-========================================================= */
+========================= */
 
 async function start() {
   app.listen(
     PORT,
     "0.0.0.0",
-    () => {
+    () =>
       console.log(
         `HavenRent API running on ${PORT}`
-      );
-    }
+      )
   );
 
   if (!MONGO_URI) {
