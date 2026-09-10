@@ -34,7 +34,7 @@ const PROVIDER_SERVICES = SERVICE_CATALOG;
 
 
 const allowedOrigins = [
-  "https://haveren.in",
+  "https://haverent.in",
   "https://www.haverent.in",
   "https://www.haverent.in",
 ];
