@@ -13,9 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
-const OWNER_REGISTRATION_FEE = Number(process.env.OWNER_REGISTRATION_FEE || 199);
-const PROVIDER_REGISTRATION_FEE = Number(process.env.PROVIDER_REGISTRATION_FEE || 199);
-const BOOKING_FEE = Number(process.env.BOOKING_FEE || 499);
+const BOOKING_FEE = 199;
 const PROPERTY_UPLOAD_FEE = 250;
 const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
@@ -34,9 +32,9 @@ const PROVIDER_SERVICES = SERVICE_CATALOG;
 
 
 const allowedOrigins = [
-  "https://haverent.in",
-  "https://www.haverent.in",
-  "https://www.haverent.in",
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
+  "https://nethouse.netlify.app",
 ];
 
 app.use(cors({
@@ -138,7 +136,7 @@ const paymentSchema = new mongoose.Schema({
   amount: { type: Number, required: true, default: PROPERTY_UPLOAD_FEE },
   currency: { type: String, default: "INR" },
   status: { type: String, enum: ["submitted", "verified", "rejected"], default: "submitted" },
-  purpose: { type: String, enum: ["owner_registration","property_upload","provider_registration","booking"], default: "property_upload" },
+  purpose: { type: String, enum: ["property_upload","booking"], default: "property_upload" },
   booking: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", default: null },
   receiptNo: { type: String, default: "" },
   usedAt: { type: Date, default: null }
@@ -226,9 +224,19 @@ app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
       providerServices=[];
     }
 
-    const verificationStatus=safeRole==="provider" ? "pending" : (safeRole==="owner" ? "pending" : "not_required");
-    // Owner token is generated only after admin verifies the owner payment.
-    const ownerToken=undefined;
+    const verificationStatus=safeRole==="provider" ? "pending" : "not_required";
+
+    // Owner and service-provider login tokens are exactly 4 digits.
+    let ownerToken;
+    let providerToken;
+    if (safeRole === "owner") {
+      do { ownerToken = String(crypto.randomInt(1000, 10000)); }
+      while (await User.exists({ ownerToken }));
+    }
+    if (safeRole === "provider") {
+      do { providerToken = String(crypto.randomInt(1000, 10000)); }
+      while (await User.exists({ providerToken }));
+    }
 
     const user=await User.create({
       name:String(name).trim(),
@@ -240,7 +248,7 @@ app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
       address:String(req.body?.address||"").trim(),
       city:String(req.body?.city||"").trim(),
       providerServices,
-      providerToken:undefined,
+      providerToken,
       ownerToken
     });
 
@@ -256,9 +264,20 @@ app.post(["/api/auth/register", "/api/register"], async (req,res)=>{
 app.post(["/api/auth/login", "/api/login"], async (req,res)=>{
   if (mongoose.connection.readyState !== 1) return res.status(503).json({message:"Database is not connected. Please check MongoDB Atlas settings in Render."});
   try{
-    const {email,password}=req.body;
-    const user=await User.findOne({email:email?.toLowerCase()});
+    const {email,password,loginToken}=req.body;
+    const user=await User.findOne({email:String(email||"").toLowerCase().trim()});
     if(!user || !(await bcrypt.compare(password||"",user.password))) return res.status(401).json({message:"Invalid email or password"});
+
+    if (["owner","provider"].includes(user.role)) {
+      if (!/^\\d{4}$/.test(String(loginToken||""))) {
+        return res.status(400).json({message:"A valid 4-digit login token is required for owner and service-provider accounts."});
+      }
+      const expected = user.role === "owner" ? user.ownerToken : user.providerToken;
+      if (!expected || String(loginToken) !== String(expected)) {
+        return res.status(401).json({message:"Incorrect 4-digit login token."});
+      }
+    }
+
     res.json({token:tokenFor(user),user:{id:user._id,name:user.name,email:user.email,role:user.role,verificationStatus:user.verificationStatus,phone:user.phone,address:user.address,city:user.city,profileImage:user.profileImage,providerServices:user.providerServices,providerToken:user.providerToken||"",ownerToken:user.ownerToken||""}});
   }catch(e){res.status(500).json({message:e.message});}
 });
@@ -419,42 +438,56 @@ app.get("/api/properties/:id",async(req,res)=>{
 });
 
 app.get("/api/payments/config", async (_req,res) => {
-  res.json({ enabled:true, method:"UPI", upiId:PAYMENT_UPI_ID, currency:"INR", amounts:{property_upload:PROPERTY_UPLOAD_FEE, provider_registration:PROVIDER_REGISTRATION_FEE, booking:BOOKING_FEE} });
+  res.json({ enabled:true, method:"UPI", upiId:PAYMENT_UPI_ID, currency:"INR", amounts:{property_upload:PROPERTY_UPLOAD_FEE, booking:BOOKING_FEE} });
 });
 
 app.get("/api/payments/my",auth,async(req,res)=>{ try{ const payments=await Payment.find({user:req.user.id}).populate("booking").sort({createdAt:-1}).limit(50); res.json({payments}); }catch(e){res.status(500).json({message:e.message});} });
 
 app.post("/api/payments/manual/submit", auth, async (req,res) => {
- try {
-  const purpose=String(req.body?.purpose||"").trim(), transactionId=String(req.body?.transactionId||"").trim();
-  if(!["owner_registration","property_upload","provider_registration","booking"].includes(purpose)) return res.status(400).json({message:"Invalid payment purpose"});
-  if(transactionId.length<6||transactionId.length>100) return res.status(400).json({message:"Please enter a valid UPI transaction ID"});
-  if(await Payment.findOne({transactionId})) return res.status(409).json({message:"This transaction ID has already been submitted"});
-  if(purpose==="owner_registration" && req.user.role!=="owner") return res.status(403).json({message:"Only owners can pay the owner registration fee"});
-  if(purpose==="property_upload" && req.user.role!=="owner") return res.status(403).json({message:"Only owners can pay this fee"});
-  if(purpose==="provider_registration" && req.user.role!=="provider") return res.status(403).json({message:"Only providers can pay this fee"});
-  if(purpose==="booking" && req.user.role!=="customer") return res.status(403).json({message:"Only customers can pay this fee"});
-  if(purpose==="owner_registration"){
-    const owner=await User.findById(req.user.id).select("ownerToken verificationStatus");
-    if(!owner) return res.status(404).json({message:"Owner not found"});
-    if(owner.ownerToken && owner.verificationStatus==="verified") return res.status(400).json({message:"Owner account is already verified"});
-    const pending=await Payment.findOne({user:req.user.id,purpose:"owner_registration",status:"submitted"});
-    if(pending) return res.status(409).json({message:"Your owner payment is already pending admin verification"});
-  }
-  if(purpose==="provider_registration"){
-    const provider=await User.findById(req.user.id).select("providerServices verificationStatus providerToken");
-    if(!provider?.providerServices?.length) return res.status(400).json({message:"Select at least one service before paying the provider registration fee"});
-    if(provider.providerToken && provider.verificationStatus==="verified") return res.status(400).json({message:"Provider account is already verified"});
-    const pending=await Payment.findOne({user:req.user.id,purpose:"provider_registration",status:"submitted"});
-    if(pending) return res.status(409).json({message:"Your provider payment is already pending admin verification"});
-  }
-  let booking=null;
-  if(purpose==="booking"){ booking=await Booking.findOne({_id:String(req.body?.bookingId||""),user:req.user.id}); if(!booking) return res.status(404).json({message:"Booking not found"}); }
-  const amount=purpose==="owner_registration"?OWNER_REGISTRATION_FEE:purpose==="property_upload"?PROPERTY_UPLOAD_FEE:purpose==="provider_registration"?PROVIDER_REGISTRATION_FEE:BOOKING_FEE;
-  const payment=await Payment.create({user:req.user.id,orderId:`${purpose}_${req.user.id}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`,transactionId,amount,currency:"INR",status:"submitted",purpose,booking:booking?booking._id:null});
-  if(booking){booking.paymentStatus="submitted";booking.paymentId=payment._id;if(!booking.receiptNo)booking.receiptNo=`HR-${new Date().getFullYear()}-${String(booking._id).slice(-8).toUpperCase()}`;await booking.save();}
-  res.status(201).json({submitted:true,paymentId:String(payment._id),amount,purpose,message:"Payment submitted. Admin verification is required."});
- }catch(e){res.status(500).json({message:e.message});}
+  try {
+    const purpose=String(req.body?.purpose||"").trim();
+    const transactionId=String(req.body?.transactionId||"").trim();
+    if(!["property_upload","booking"].includes(purpose))
+      return res.status(400).json({message:"Invalid payment purpose"});
+    if(transactionId.length<6 || transactionId.length>100)
+      return res.status(400).json({message:"Please enter a valid UPI transaction ID"});
+
+    if(await Payment.findOne({transactionId}))
+      return res.status(409).json({message:"This transaction ID has already been submitted"});
+
+    if(purpose==="property_upload" && req.user.role!=="owner")
+      return res.status(403).json({message:"Only owners can pay the property upload fee"});
+    if(purpose==="booking" && req.user.role!=="customer")
+      return res.status(403).json({message:"Only customers can pay the booking fee"});
+
+    let booking=null;
+    if(purpose==="booking"){
+      booking=await Booking.findOne({_id:String(req.body?.bookingId||""),user:req.user.id});
+      if(!booking) return res.status(404).json({message:"Booking not found"});
+      if(booking.status==="cancelled") return res.status(400).json({message:"This booking has been cancelled"});
+    }
+
+    if(purpose==="property_upload"){
+      const pending=await Payment.findOne({user:req.user.id,purpose,status:"submitted"});
+      if(pending) return res.status(409).json({message:"Your property upload payment is already pending admin verification"});
+    }
+
+    const amount=purpose==="property_upload" ? PROPERTY_UPLOAD_FEE : BOOKING_FEE;
+    const payment=await Payment.create({
+      user:req.user.id,
+      orderId:`${purpose}_${req.user.id}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`,
+      transactionId,amount,currency:"INR",status:"submitted",purpose,
+      booking:booking?booking._id:null
+    });
+
+    if(booking){
+      booking.paymentStatus="submitted";
+      booking.paymentId=payment._id;
+      await booking.save();
+    }
+
+    res.status(201).json({submitted:true,paymentId:String(payment._id),amount,purpose,message:"Payment submitted. Admin verification is required."});
+  }catch(e){res.status(500).json({message:e.message});}
 });
 
 app.get("/api/services",(_req,res)=>res.json({services:SERVICE_CATALOG}));
@@ -690,17 +723,14 @@ app.patch("/api/admin/providers/:id",adminAuth,async(req,res)=>{
     if(!provider) return res.status(404).json({message:"Provider not found"});
 
     if(status==="verified"){
-      const paid=await Payment.findOne({user:req.params.id,purpose:"provider_registration",status:"verified"});
-      if(!paid) return res.status(400).json({message:"Verify the ₹199 provider registration payment before approving this provider"});
       if(!provider.providerToken){
         let candidate;
-        do {
-          candidate=`SP-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-        } while(await User.exists({providerToken:candidate}));
+        do { candidate=String(crypto.randomInt(1000,10000)); }
+        while(await User.exists({providerToken:candidate}));
         provider.providerToken=candidate;
       }
     }else if(status==="rejected"){
-      provider.providerToken=undefined;
+      // Keep the token so the provider can retry after admin changes the status.
     }
 
     provider.verificationStatus=status;
@@ -747,7 +777,7 @@ app.patch("/api/admin/services/requests/:id",adminAuth,async(req,res)=>{
 
 app.get("/api/admin/payments",adminAuth,async(req,res)=>{
   try{
-    const payments=await Payment.find({status:"submitted"}).sort({createdAt:-1}).populate("user","name email").populate("booking","receiptNo property moveInDate");
+    const payments=await Payment.find({status:"submitted",purpose:{$in:["property_upload","booking"]}}).sort({createdAt:-1}).populate("user","name email role phone providerServices ownerToken providerToken").populate("booking","receiptNo property moveInDate");
     res.json({payments});
   }catch(e){res.status(500).json({message:e.message});}
 });
@@ -764,51 +794,6 @@ app.patch("/api/admin/payments/:id",adminAuth,async(req,res)=>{
       payment.receiptNo=`PAY-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
     }
     await payment.save();
-
-    // Owner payment verification automatically activates the owner
-    // and generates the unique OWN token. No owner token exists before verification.
-    if(payment.purpose==="owner_registration"){
-      const owner=await User.findOne({_id:payment.user,role:"owner"});
-      if(owner){
-        if(status==="verified"){
-          if(!owner.ownerToken){
-            let candidate;
-            do {
-              candidate=`OWN-${new Date().getFullYear()}-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-            } while(await User.exists({ownerToken:candidate}));
-            owner.ownerToken=candidate;
-          }
-          owner.verificationStatus="verified";
-        }else{
-          owner.verificationStatus="rejected";
-          owner.ownerToken=undefined;
-        }
-        await owner.save();
-        await Notification.create({user:owner._id,title:status==="verified"?"Owner account verified":"Owner payment rejected",message:status==="verified"?`Your owner account is verified. Your unique token is ${owner.ownerToken}. You can now use the owner dashboard.`:"Your owner registration payment was rejected. Please review the payment and submit again."});
-      }
-    }
-
-    // Provider payment verification automatically activates the provider
-    // and generates the unique SP token. No token exists before verification.
-    if(payment.purpose==="provider_registration"){
-      const provider=await User.findOne({_id:payment.user,role:"provider"});
-      if(provider){
-        if(status==="verified"){
-          if(!provider.providerToken){
-            let candidate;
-            do {
-              candidate=`SP-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-            } while(await User.exists({providerToken:candidate}));
-            provider.providerToken=candidate;
-          }
-          provider.verificationStatus="verified";
-        }else{
-          provider.verificationStatus="rejected";
-          provider.providerToken=undefined;
-        }
-        await provider.save();
-      }
-    }
 
     if(payment.purpose==="booking" && payment.booking){
       const booking=await Booking.findById(payment.booking);
