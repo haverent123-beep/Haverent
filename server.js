@@ -32,9 +32,9 @@ const PROVIDER_SERVICES = SERVICE_CATALOG;
 
 
 const allowedOrigins = [
-  "https://haverent.netlify.app",
-  "https://haveerent.netlify.app",
-  "https://nethouse.netlify.app",
+  "https://haverent.in",
+  "https://haverent/admin",
+  "https://www.haverent.in",
 ];
 
 app.use(cors({
