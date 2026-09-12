@@ -28,5 +28,5 @@ Existing required variables remain:
 ## Important fixes
 - Owner/provider login token validation uses a real 4-digit numeric regex.
 - Booking fee is ₹199.
-- Property upload fee is ₹250.
+- Property upload fee is ₹199.
 - Password reset does not reveal whether an email is registered.

@@ -17,5 +17,11 @@ services:
         sync: false
       - key: PAYMENT_UPI_ID
         sync: false
+      - key: PROVIDER_REGISTRATION_FEE
+        value: "199"
+      - key: BOOKING_FEE
+        value: "199"
+      - key: PROPERTY_UPLOAD_FEE
+        value: "199"
       - key: FRONTEND_ORIGINS
         sync: false

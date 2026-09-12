@@ -14,8 +14,9 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MONGO_URI = process.env.MONGO_URI || "";
 const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
+const PROPERTY_UPLOAD_FEE = 199;
+const PROVIDER_REGISTRATION_FEE = 199;
 const BOOKING_FEE = 199;
-const PROPERTY_UPLOAD_FEE = 250;
 const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -48,8 +49,8 @@ const PROVIDER_SERVICES = SERVICE_CATALOG;
 
 
 const allowedOrigins = [
-  "https://haverent.in",
-  "https://www.haverent.in",
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
   "https://nethouse.netlify.app",
 ];
 
@@ -95,7 +96,9 @@ const userSchema = new mongoose.Schema({
 
 const propertySchema = new mongoose.Schema({
   title: { type: String, required: true },
+  state: String,
   city: String,
+  area: String,
   location: String,
   rent: { type: Number, required: true },
   type: { type: String, default: "Flat" },
@@ -131,14 +134,27 @@ const propertySchema = new mongoose.Schema({
   maintenance: { type: Number, default: null },
   parking: { type: String, default: "" },
   lift: { type: Boolean, default: false },
-  powerBackup: { type: Boolean, default: false }
+  powerBackup: { type: Boolean, default: false },
+  // Advanced type-specific fields
+  houseType: { type: String, default: "" },
+  waterSupply: { type: String, default: "" },
+  terrace: { type: Boolean, default: false },
+  gatedCommunity: { type: Boolean, default: false },
+  petFriendly: { type: Boolean, default: false },
+  foodPlan: { type: String, default: "" },
+  curfew: { type: String, default: "" },
+  laundry: { type: Boolean, default: false },
+  housekeeping: { type: Boolean, default: false },
+  bedCount: { type: Number, default: null },
+  privateEntrance: { type: Boolean, default: false },
+  rules: { type: String, default: "" }
 }, { timestamps: true });
 
 const bookingSchema = new mongoose.Schema({
   property: { type: mongoose.Schema.Types.ObjectId, ref: "Property", required: true },
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   status: { type: String, enum: ["pending","confirmed","cancelled"], default: "pending" },
-  paymentStatus: { type: String, enum: ["submitted","verified","rejected"], default: "submitted" },
+  paymentStatus: { type: String, enum: ["pending","submitted","verified","rejected"], default: "pending" },
   paymentId: { type: mongoose.Schema.Types.ObjectId, ref: "Payment", default: null },
   receiptNo: { type: String, default: "" },
   moveInDate: String
@@ -155,7 +171,7 @@ const paymentSchema = new mongoose.Schema({
   amount: { type: Number, required: true, default: PROPERTY_UPLOAD_FEE },
   currency: { type: String, default: "INR" },
   status: { type: String, enum: ["submitted", "verified", "rejected"], default: "submitted" },
-  purpose: { type: String, enum: ["property_upload","booking"], default: "property_upload" },
+  purpose: { type: String, enum: ["property_upload","provider_registration","booking"], default: "property_upload" },
   booking: { type: mongoose.Schema.Types.ObjectId, ref: "Booking", default: null },
   receiptNo: { type: String, default: "" },
   usedAt: { type: Date, default: null }
@@ -436,7 +452,7 @@ app.post(["/api/auth/login", "/api/login"], async (req,res)=>{
     if(!user || !(await bcrypt.compare(password||"",user.password))) return res.status(401).json({message:"Invalid email or password"});
 
     if (["owner","provider"].includes(user.role)) {
-      if (!/^\\d{4}$/.test(String(loginToken||""))) {
+      if (!/^\d{4}$/.test(String(loginToken||""))) {
         return res.status(400).json({message:"A valid 4-digit login token is required for owner and service-provider accounts."});
       }
       const expected = user.role === "owner" ? user.ownerToken : user.providerToken;
@@ -582,12 +598,35 @@ const demoProperties = [
 
 app.get("/api/properties",async(req,res)=>{
   try{
+    const mode=String(req.query.mode||"").toLowerCase();
+    const city=String(req.query.city||"").trim();
+    const state=String(req.query.state||"").trim();
+    const area=String(req.query.area||"").trim();
+    const type=String(req.query.type||"").trim();
+    const maxRent=req.query.maxRent!==undefined?Number(req.query.maxRent):null;
+    const lat=Number(req.query.lat ?? req.query.latitude);
+    const lng=Number(req.query.lng ?? req.query.longitude);
+    const radius=Math.min(Math.max(Number(req.query.radius)||5,1),100);
     const q={};
-    if(req.query.city) q.city=new RegExp(req.query.city,"i");
-    if(req.query.type) q.type=req.query.type;
-    if(req.query.maxRent) q.rent={$lte:Number(req.query.maxRent)};
+    if(city) q.city=new RegExp(city,"i");
+    if(state) q.state=new RegExp(state,"i");
+    if(area) q.area=new RegExp(area,"i");
+    if(type && type!=="All") q.type=type;
+    if(Number.isFinite(maxRent) && maxRent>0) q.rent={$lte:maxRent};
     if(!MONGO_URI) return res.json({properties:demoProperties});
-    const properties=await Property.find(q).sort({createdAt:-1}).populate("owner","name email");
+    let properties=await Property.find(q).sort({createdAt:-1}).populate("owner","name email");
+    if(mode==="nearby" && Number.isFinite(lat) && Number.isFinite(lng)){
+      const toRad=n=>n*Math.PI/180;
+      properties=properties.map(p=>{
+        const obj=p.toObject();
+        if(Number.isFinite(p.latitude)&&Number.isFinite(p.longitude)){
+          const dLat=toRad(p.latitude-lat),dLng=toRad(p.longitude-lng);
+          const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat))*Math.cos(toRad(p.latitude))*Math.sin(dLng/2)**2;
+          obj.distanceKm=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+        }
+        return obj;
+      }).filter(p=>p.distanceKm!==undefined && p.distanceKm<=radius).sort((a,b)=>a.distanceKm-b.distanceKm);
+    }
     res.json({properties});
   }catch(e){res.status(500).json({message:e.message});}
 });
@@ -605,7 +644,7 @@ app.get("/api/properties/:id",async(req,res)=>{
 });
 
 app.get("/api/payments/config", async (_req,res) => {
-  res.json({ enabled:true, method:"UPI", upiId:PAYMENT_UPI_ID, currency:"INR", amounts:{property_upload:PROPERTY_UPLOAD_FEE, booking:BOOKING_FEE} });
+  res.json({ enabled:true, method:"UPI", upiId:PAYMENT_UPI_ID, currency:"INR", amounts:{property_upload:PROPERTY_UPLOAD_FEE, provider_registration:PROVIDER_REGISTRATION_FEE, booking:BOOKING_FEE} });
 });
 
 app.get("/api/payments/my",auth,async(req,res)=>{ try{ const payments=await Payment.find({user:req.user.id}).populate("booking").sort({createdAt:-1}).limit(50); res.json({payments}); }catch(e){res.status(500).json({message:e.message});} });
@@ -614,7 +653,7 @@ app.post("/api/payments/manual/submit", auth, async (req,res) => {
   try {
     const purpose=String(req.body?.purpose||"").trim();
     const transactionId=String(req.body?.transactionId||"").trim();
-    if(!["property_upload","booking"].includes(purpose))
+    if(!["property_upload","provider_registration","booking"].includes(purpose))
       return res.status(400).json({message:"Invalid payment purpose"});
     if(transactionId.length<6 || transactionId.length>100)
       return res.status(400).json({message:"Please enter a valid UPI transaction ID"});
@@ -624,6 +663,8 @@ app.post("/api/payments/manual/submit", auth, async (req,res) => {
 
     if(purpose==="property_upload" && req.user.role!=="owner")
       return res.status(403).json({message:"Only owners can pay the property upload fee"});
+    if(purpose==="provider_registration" && req.user.role!=="provider")
+      return res.status(403).json({message:"Only service providers can pay the provider registration fee"});
     if(purpose==="booking" && req.user.role!=="customer")
       return res.status(403).json({message:"Only customers can pay the booking fee"});
 
@@ -634,12 +675,18 @@ app.post("/api/payments/manual/submit", auth, async (req,res) => {
       if(booking.status==="cancelled") return res.status(400).json({message:"This booking has been cancelled"});
     }
 
-    if(purpose==="property_upload"){
+    if(purpose==="property_upload" || purpose==="provider_registration"){
       const pending=await Payment.findOne({user:req.user.id,purpose,status:"submitted"});
-      if(pending) return res.status(409).json({message:"Your property upload payment is already pending admin verification"});
+      if(pending) return res.status(409).json({message:"Your payment is already pending admin verification"});
     }
 
-    const amount=purpose==="property_upload" ? PROPERTY_UPLOAD_FEE : BOOKING_FEE;
+    if(purpose==="provider_registration"){
+      const provider=await User.findById(req.user.id).select("providerServices role");
+      if(!provider || provider.role!=="provider") return res.status(404).json({message:"Provider not found"});
+      if(!provider.providerServices?.length) return res.status(400).json({message:"Select at least one service before paying"});
+    }
+
+    const amount=purpose==="property_upload" ? PROPERTY_UPLOAD_FEE : purpose==="provider_registration" ? PROVIDER_REGISTRATION_FEE : BOOKING_FEE;
     const payment=await Payment.create({
       user:req.user.id,
       orderId:`${purpose}_${req.user.id}_${Date.now()}_${crypto.randomBytes(3).toString("hex")}`,
@@ -890,6 +937,8 @@ app.patch("/api/admin/providers/:id",adminAuth,async(req,res)=>{
     if(!provider) return res.status(404).json({message:"Provider not found"});
 
     if(status==="verified"){
+      const paid=await Payment.findOne({user:provider._id,purpose:"provider_registration",amount:PROVIDER_REGISTRATION_FEE,status:"verified"});
+      if(!paid) return res.status(400).json({message:"Verify the ₹199 provider registration payment before approving this provider"});
       if(!provider.providerToken){
         let candidate;
         do { candidate=String(crypto.randomInt(1000,10000)); }
@@ -944,7 +993,10 @@ app.patch("/api/admin/services/requests/:id",adminAuth,async(req,res)=>{
 
 app.get("/api/admin/payments",adminAuth,async(req,res)=>{
   try{
-    const payments=await Payment.find({status:"submitted",purpose:{$in:["property_upload","booking"]}}).sort({createdAt:-1}).populate("user","name email role phone providerServices ownerToken providerToken").populate("booking","receiptNo property moveInDate");
+    const requestedStatus=String(req.query?.status||"submitted");
+    const paymentFilter={purpose:{$in:["property_upload","provider_registration","booking"]}};
+    if(requestedStatus!=="all") paymentFilter.status=requestedStatus;
+    const payments=await Payment.find(paymentFilter).sort({createdAt:-1}).populate("user","name email role phone providerServices ownerToken providerToken").populate("booking","receiptNo property moveInDate");
     res.json({payments});
   }catch(e){res.status(500).json({message:e.message});}
 });
@@ -961,6 +1013,14 @@ app.patch("/api/admin/payments/:id",adminAuth,async(req,res)=>{
       payment.receiptNo=`PAY-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
     }
     await payment.save();
+
+    if(payment.purpose==="property_upload"){
+      await Notification.create({user:payment.user,title:status==="verified"?"Property upload payment verified":"Property upload payment rejected",message:status==="verified"?"Your ₹199 property-upload payment is verified. You can now publish your property using the verified payment.":"Your ₹199 property-upload payment was rejected. Please submit a new payment."});
+    }
+
+    if(payment.purpose==="provider_registration"){
+      await Notification.create({user:payment.user,title:status==="verified"?"Provider payment verified":"Provider payment rejected",message:status==="verified"?"Your ₹199 provider-registration payment is verified. Admin can now review your provider account.":"Your ₹199 provider-registration payment was rejected. Please submit a new payment."});
+    }
 
     if(payment.purpose==="booking" && payment.booking){
       const booking=await Booking.findById(payment.booking);
@@ -998,15 +1058,18 @@ async function requireSubmittedUploadPayment(userId, transactionId){
 app.post("/api/properties",auth,async(req,res)=>{
   try{
     if(req.user.role!=="owner") return res.status(403).json({message:"Only owners can add properties"});
-    const {title,city,location,rent,type,description,image,images,contact,latitude,longitude,transactionId,roomType,occupancy,totalRooms,availableRooms,gender,furnished,food,attachedBathroom,securityDeposit,amenities,bhk,bathrooms,balconies,areaSqft,floor,totalFloors,facing,propertyAge,preferredTenants,maintenance,parking,lift,powerBackup}=req.body;
+    const {title,state,city,area,location,rent,type,description,image,images,contact,latitude,longitude,transactionId,roomType,occupancy,totalRooms,availableRooms,gender,furnished,food,attachedBathroom,securityDeposit,amenities,bhk,bathrooms,balconies,areaSqft,floor,totalFloors,facing,propertyAge,preferredTenants,maintenance,parking,lift,powerBackup,houseType,waterSupply,terrace,gatedCommunity,petFriendly,foodPlan,curfew,laundry,housekeeping,bedCount,privateEntrance,rules}=req.body;
     if(!title || rent===undefined) return res.status(400).json({message:"Title and rent are required"});
+    const allowedTypes=["Flat","House","PG","Room","Commercial"];
+    if(!allowedTypes.includes(String(type||""))) return res.status(400).json({message:"Select a valid property type"});
+    if(!city || !area && !location) return res.status(400).json({message:"City and locality are required"});
     const payment=await requireSubmittedUploadPayment(req.user.id,transactionId);
-    const property=await Property.create({title,city,location,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id,roomType:String(roomType||""),occupancy:occupancy===""||occupancy==null?undefined:Number(occupancy),totalRooms:totalRooms===""||totalRooms==null?undefined:Number(totalRooms),availableRooms:availableRooms===""||availableRooms==null?undefined:Number(availableRooms),gender:String(gender||""),furnished:String(furnished||""),food:String(food||""),attachedBathroom:Boolean(attachedBathroom),securityDeposit:securityDeposit===""||securityDeposit==null?undefined:Number(securityDeposit),amenities:Array.isArray(amenities)?amenities.slice(0,30):[],bhk:bhk===""||bhk==null?undefined:Number(bhk),bathrooms:bathrooms===""||bathrooms==null?undefined:Number(bathrooms),balconies:balconies===""||balconies==null?undefined:Number(balconies),areaSqft:areaSqft===""||areaSqft==null?undefined:Number(areaSqft),floor:floor===""||floor==null?undefined:Number(floor),totalFloors:totalFloors===""||totalFloors==null?undefined:Number(totalFloors),facing:String(facing||""),propertyAge:String(propertyAge||""),preferredTenants:String(preferredTenants||""),maintenance:maintenance===""||maintenance==null?undefined:Number(maintenance),parking:String(parking||""),lift:Boolean(lift),powerBackup:Boolean(powerBackup)});
+    const property=await Property.create({title,state,city,area:area||location,location:location||area,rent:Number(rent),type,description,image,images:Array.isArray(images)?images.slice(0,8):[],contact,latitude:latitude!==undefined&&latitude!==""?Number(latitude):undefined,longitude:longitude!==undefined&&longitude!==""?Number(longitude):undefined,owner:req.user.id,roomType:String(roomType||""),occupancy:occupancy===""||occupancy==null?undefined:Number(occupancy),totalRooms:totalRooms===""||totalRooms==null?undefined:Number(totalRooms),availableRooms:availableRooms===""||availableRooms==null?undefined:Number(availableRooms),gender:String(gender||""),furnished:String(furnished||""),food:String(food||""),attachedBathroom:Boolean(attachedBathroom),securityDeposit:securityDeposit===""||securityDeposit==null?undefined:Number(securityDeposit),amenities:Array.isArray(amenities)?amenities.slice(0,30):[],bhk:bhk===""||bhk==null?undefined:Number(bhk),bathrooms:bathrooms===""||bathrooms==null?undefined:Number(bathrooms),balconies:balconies===""||balconies==null?undefined:Number(balconies),areaSqft:areaSqft===""||areaSqft==null?undefined:Number(areaSqft),floor:floor===""||floor==null?undefined:Number(floor),totalFloors:totalFloors===""||totalFloors==null?undefined:Number(totalFloors),facing:String(facing||""),propertyAge:String(propertyAge||""),preferredTenants:String(preferredTenants||""),maintenance:maintenance===""||maintenance==null?undefined:Number(maintenance),parking:String(parking||""),lift:Boolean(lift),powerBackup:Boolean(powerBackup),houseType:String(houseType||""),waterSupply:String(waterSupply||""),terrace:Boolean(terrace),gatedCommunity:Boolean(gatedCommunity),petFriendly:Boolean(petFriendly),foodPlan:String(foodPlan||""),curfew:String(curfew||""),laundry:Boolean(laundry),housekeeping:Boolean(housekeeping),bedCount:bedCount===""||bedCount==null?undefined:Number(bedCount),privateEntrance:Boolean(privateEntrance),rules:String(rules||"")});
     payment.usedAt=new Date(); await payment.save();
     res.status(201).json({property});
   }catch(e){
     const msg=String(e?.message||"Could not create property");
-    res.status(msg.includes("pending admin verification")||msg.includes("₹250")?403:500).json({message:msg});
+    res.status(msg.includes("pending admin verification")||msg.includes("₹199")?403:500).json({message:msg});
   }
 });
 
@@ -1017,7 +1080,7 @@ app.put("/api/properties/:id",auth,async(req,res)=>{
     if(String(p.owner)!==req.user.id) return res.status(403).json({message:"Not allowed"});
 
     // Owners may edit their listing, but cannot transfer ownership through this endpoint.
-    const allowed=["title","city","location","rent","type","description","image","images","contact","latitude","longitude","available","roomType","occupancy","totalRooms","availableRooms","gender","furnished","food","attachedBathroom","securityDeposit","amenities","bhk","bathrooms","balconies","areaSqft","floor","totalFloors","facing","propertyAge","preferredTenants","maintenance","parking","lift","powerBackup"];
+    const allowed=["title","state","city","area","location","rent","type","description","image","images","contact","latitude","longitude","available","roomType","occupancy","totalRooms","availableRooms","gender","furnished","food","attachedBathroom","securityDeposit","amenities","bhk","bathrooms","balconies","areaSqft","floor","totalFloors","facing","propertyAge","preferredTenants","maintenance","parking","lift","powerBackup","houseType","waterSupply","terrace","gatedCommunity","petFriendly","foodPlan","curfew","laundry","housekeeping","bedCount","privateEntrance","rules"];
     for(const key of allowed){
       if(Object.prototype.hasOwnProperty.call(req.body,key)){
         if(key==="rent") {
@@ -1054,7 +1117,7 @@ app.post("/api/bookings",auth,async(req,res)=>{
   const {property,moveInDate}=req.body; const p=await Property.findById(property);
   if(!p) return res.status(404).json({message:"Property not found"}); if(p.available===false) return res.status(409).json({message:"This property is currently unavailable"});
   const existing=await Booking.findOne({property,user:req.user.id,status:{$in:["pending","confirmed"]}}); if(existing) return res.status(409).json({message:"You already have an active booking request for this property"});
-  const booking=await Booking.create({property,user:req.user.id,moveInDate:String(moveInDate||""),paymentStatus:"submitted",receiptNo:`HR-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`});
+  const booking=await Booking.create({property,user:req.user.id,moveInDate:String(moveInDate||""),paymentStatus:"pending",receiptNo:`HR-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`});
   await booking.populate("property");
    await Notification.create({user:req.user.id,title:"Booking request created",message:`Your booking request for ${booking.property?.title||"the property"} has been created. Please complete the ₹${BOOKING_FEE} payment for verification.`});
    res.status(201).json({booking,requiresPayment:true,amount:BOOKING_FEE,message:"Booking created. Complete UPI payment and submit the transaction ID for admin verification."});
@@ -1089,7 +1152,10 @@ app.patch("/api/bookings/:id/status",auth,async(req,res)=>{
   const booking=await Booking.findById(req.params.id).populate("property");
   if(!booking) return res.status(404).json({message:"Booking not found"});
   if(String(booking.property.owner)!==req.user.id) return res.status(403).json({message:"Not allowed"});
-  booking.status=req.body.status; await booking.save();
+  const nextStatus=String(req.body?.status||"");
+  if(!["confirmed","cancelled","pending"].includes(nextStatus)) return res.status(400).json({message:"Invalid booking status"});
+  if(nextStatus==="confirmed" && booking.paymentStatus!=="verified") return res.status(400).json({message:"Booking payment must be verified by admin before confirmation"});
+  booking.status=nextStatus; await booking.save();
   res.json({booking});
 });
 
