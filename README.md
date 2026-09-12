@@ -1,39 +1,32 @@
-# HavenRent 2.0 — Animated Frontend + API
+# HavenRent Backend – Fixed
 
-## Frontend
-cd HavenRent-Animated-Frontend
-npm install
-npm run build
+## Password reset
+Owner, customer and service-provider accounts can use:
 
-Set `VITE_API_URL` to your Render API URL.
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/verify-reset-otp`
+- `POST /api/auth/reset-password`
 
-## Backend
-cd backend
-npm install
-npm start
+The OTP is 6 digits, expires after 10 minutes, and is stored only as a bcrypt hash.
 
-Required Render environment variables:
-- MONGO_URI
-- JWT_SECRET
-- ADMIN_EMAIL
-- ADMIN_PASSWORD
-- PAYMENT_UPI_ID
-- FRONTEND_ORIGINS
+### Render environment variables for email
+Add these to the Render backend service:
 
-## Main flows
-- Customer registration/login → customer dashboard
-- Owner registration/login → owner dashboard
-- Owner pays ₹250 by UPI → submits transaction ID → admin verifies → property upload unlocked
-- Provider registration → pending verification → admin verifies provider → provider jobs enabled
-- Customer service request → provider accepts → provider updates status
-- Owner receives booking → owner confirms/cancels
-- Customer can view/cancel pending booking
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-gmail-app-password
+SMTP_FROM=HavenRent <your-email@gmail.com>
+```
 
-## Payment & verification flow (updated)
-- Owner registration generates a unique `OWN-XXXXXXXXXX` owner token and returns it after registration/login.
-- Owner property-listing fee: `PROPERTY_UPLOAD_FEE` (default ₹250). Property upload is unlocked only after admin verifies that UPI payment.
-- Service-provider registration fee: `PROVIDER_REGISTRATION_FEE` (default ₹199). Admin must verify the provider payment before approving the provider account.
-- Customer booking fee: `BOOKING_FEE` (default ₹499). A booking request is created, the customer submits the UPI transaction ID, and admin verifies the booking payment.
-- Admin payment control centre now handles all submitted payment purposes: property upload, provider registration, and booking.
-- Customer booking receipt becomes available only after booking payment verification. The customer dashboard can print/save the receipt.
-- Render environment variables should include `PROVIDER_REGISTRATION_FEE`, `BOOKING_FEE`, and the existing `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `PAYMENT_UPI_ID`, `MONGO_URI`, `JWT_SECRET`, and `FRONTEND_ORIGINS`.
+For Gmail, use a Google **App Password**, not your normal Gmail password.
+
+Existing required variables remain:
+`MONGO_URI`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `PAYMENT_UPI_ID`, and optionally `FRONTEND_ORIGINS`.
+
+## Important fixes
+- Owner/provider login token validation uses a real 4-digit numeric regex.
+- Booking fee is ₹199.
+- Property upload fee is ₹250.
+- Password reset does not reveal whether an email is registered.

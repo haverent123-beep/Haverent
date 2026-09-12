@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -19,6 +20,21 @@ const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID || "9553473078-4@ybl";
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const EXTRA_ORIGINS = String(process.env.FRONTEND_ORIGINS || "").split(",").map(x=>x.trim()).filter(Boolean);
+const SMTP_HOST = String(process.env.SMTP_HOST || "").trim();
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = String(process.env.SMTP_USER || "").trim();
+const SMTP_PASS = String(process.env.SMTP_PASS || "");
+const SMTP_FROM = String(process.env.SMTP_FROM || SMTP_USER || "no-reply@haverent.in").trim();
+
+const mailTransport = SMTP_HOST && SMTP_USER && SMTP_PASS
+  ? nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    })
+  : null;
+
 
 const SERVICE_CATALOG = [
   "Home Repairs",
@@ -32,9 +48,9 @@ const PROVIDER_SERVICES = SERVICE_CATALOG;
 
 
 const allowedOrigins = [
-  "https://haverent.in",
-  "https://haverent/admin",
-  "https://www.haverent.in",
+  "https://haverent.netlify.app",
+  "https://haveerent.netlify.app",
+  "https://nethouse.netlify.app",
 ];
 
 app.use(cors({
@@ -68,6 +84,9 @@ const userSchema = new mongoose.Schema({
     end: { type: String, default: "18:00" }
   },
   serviceAreas: { type: [String], default: [] },
+  // Password-reset OTP fields. The OTP itself is never stored in plain text.
+  resetOtpHash: { type: String, default: "" },
+  resetOtpExpiresAt: { type: Date, default: null },
   accountStatus: { type: String, enum: ["active","suspended"], default: "active" },
   suspensionReason: { type: String, default: "" },
   providerToken: { type: String, unique: true, sparse: true },
@@ -186,6 +205,154 @@ function auth(req,res,next) {
   try { req.user=jwt.verify(token,JWT_SECRET); next(); }
   catch { return res.status(401).json({message:"Invalid or expired token"}); }
 }
+
+
+function normalizeEmail(value) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function passwordResetOtp() {
+  return String(crypto.randomInt(100000, 1000000));
+}
+
+async function sendPasswordResetOtp(email, name, otp) {
+  if (!mailTransport) {
+    const err = new Error("Password reset email service is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and SMTP_FROM in Render.");
+    err.code = "SMTP_NOT_CONFIGURED";
+    throw err;
+  }
+
+  await mailTransport.sendMail({
+    from: SMTP_FROM,
+    to: email,
+    subject: "HavenRent password reset OTP",
+    text: `Hi ${name || "there"},\n\nYour HavenRent password reset OTP is ${otp}. It expires in 10 minutes.\n\nIf you did not request this, you can ignore this email.`,
+    html: `<div style="font-family:Arial,sans-serif;line-height:1.6">
+      <h2>HavenRent Password Reset</h2>
+      <p>Hi ${name || "there"},</p>
+      <p>Your password reset OTP is:</p>
+      <p style="font-size:28px;font-weight:700;letter-spacing:6px">${otp}</p>
+      <p>This OTP expires in <b>10 minutes</b>.</p>
+      <p>If you did not request a password reset, you can safely ignore this email.</p>
+    </div>`
+  });
+}
+
+app.post(["/api/auth/forgot-password", "/api/forgot-password"], async (req,res)=>{
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({message:"Database is not connected. Please check MongoDB Atlas settings in Render."});
+    }
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email) return res.status(400).json({message:"Email is required"});
+
+    const user = await User.findOne({email});
+    // Do not reveal whether an email exists.
+    if (!user) {
+      return res.json({message:"If an account exists for this email, a password reset OTP has been sent."});
+    }
+
+    const otp = passwordResetOtp();
+    user.resetOtpHash = await bcrypt.hash(otp, 10);
+    user.resetOtpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await user.save();
+
+    try {
+      await sendPasswordResetOtp(user.email, user.name, otp);
+    } catch (mailErr) {
+      user.resetOtpHash = "";
+      user.resetOtpExpiresAt = null;
+      await user.save();
+      if (mailErr.code === "SMTP_NOT_CONFIGURED") {
+        return res.status(503).json({message:mailErr.message});
+      }
+      console.error("Password reset email error:", mailErr);
+      return res.status(502).json({message:"Unable to send the reset email right now. Please try again later."});
+    }
+
+    return res.json({message:"Password reset OTP sent to your registered email. It expires in 10 minutes."});
+  } catch(e) {
+    console.error("Forgot password error:", e);
+    res.status(500).json({message:"Unable to start password reset"});
+  }
+});
+
+app.post(["/api/auth/verify-reset-otp", "/api/verify-reset-otp"], async (req,res)=>{
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({message:"Database is not connected."});
+    }
+
+    const email = normalizeEmail(req.body?.email);
+    const otp = String(req.body?.otp || "").trim();
+    if (!email || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({message:"Enter the 6-digit OTP"});
+    }
+
+    const user = await User.findOne({email});
+    if (!user || !user.resetOtpHash || !user.resetOtpExpiresAt) {
+      return res.status(400).json({message:"Invalid or expired OTP"});
+    }
+    if (user.resetOtpExpiresAt.getTime() < Date.now()) {
+      user.resetOtpHash = "";
+      user.resetOtpExpiresAt = null;
+      await user.save();
+      return res.status(400).json({message:"OTP has expired. Please request a new OTP."});
+    }
+    if (!(await bcrypt.compare(otp, user.resetOtpHash))) {
+      return res.status(400).json({message:"Invalid OTP"});
+    }
+
+    res.json({valid:true,message:"OTP verified. You can now set a new password."});
+  } catch(e) {
+    console.error("Verify reset OTP error:", e);
+    res.status(500).json({message:"Unable to verify OTP"});
+  }
+});
+
+app.post(["/api/auth/reset-password", "/api/reset-password"], async (req,res)=>{
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({message:"Database is not connected."});
+    }
+
+    const email = normalizeEmail(req.body?.email);
+    const otp = String(req.body?.otp || "").trim();
+    const newPassword = String(req.body?.newPassword || req.body?.password || "");
+
+    if (!email || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({message:"Email and valid 6-digit OTP are required"});
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({message:"New password must be at least 6 characters"});
+    }
+
+    const user = await User.findOne({email});
+    if (!user || !user.resetOtpHash || !user.resetOtpExpiresAt) {
+      return res.status(400).json({message:"Invalid or expired OTP"});
+    }
+    if (user.resetOtpExpiresAt.getTime() < Date.now()) {
+      user.resetOtpHash = "";
+      user.resetOtpExpiresAt = null;
+      await user.save();
+      return res.status(400).json({message:"OTP has expired. Please request a new OTP."});
+    }
+    if (!(await bcrypt.compare(otp, user.resetOtpHash))) {
+      return res.status(400).json({message:"Invalid OTP"});
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12);
+    user.resetOtpHash = "";
+    user.resetOtpExpiresAt = null;
+    await user.save();
+
+    res.json({message:"Password reset successfully. Please login with your new password."});
+  } catch(e) {
+    console.error("Reset password error:", e);
+    res.status(500).json({message:"Unable to reset password"});
+  }
+});
 
 app.post("/api/admin/login", (req,res)=>{
   const email=String(req.body?.email||"").toLowerCase().trim();
